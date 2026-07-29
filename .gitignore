@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+
+# Generated assets
+storage/images/*
+storage/models/*
+!storage/images/.gitkeep
+!storage/models/.gitkeep
+
+# Local tool caches
+.vite/
+.pytest_cache/
+

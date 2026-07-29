@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="industry.css">
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    @keyframes om-spin { to { transform: rotate(360deg); } }
+    @keyframes om-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes om-modal-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+    html, body { margin: 0; height: 100%; }
+    a { color: var(--color-accent); }
+    a:hover { color: var(--color-accent-700); }
+    .input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparent); }
+  </style>
+</helmet>
+<div style="height:100vh;width:100%;overflow:hidden;">
+  <div style="display:grid;grid-template-columns:minmax(380px,460px) 1fr;height:100%;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);">
+
+    <section style="display:flex;flex-direction:column;min-height:0;height:100%;border-right:1px solid var(--color-divider);">
+      <header style="padding:var(--space-4) var(--space-4) var(--space-3);border-bottom:1px solid var(--color-divider);">
+        <div style="font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent);">對話</div>
+      </header>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);">
+        <sc-for list="{{ messagesVM }}" as="msg" hint-placeholder-count="4">
+          <sc-if value="{{ msg.isUser }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;justify-content:flex-end;">
+              <div style="max-width:80%;background:var(--color-accent-100);color:var(--color-accent-800);padding:var(--space-2) var(--space-3);font-size:14px;line-height:1.5;">
+                <div>{{ msg.text }}</div>
+                <div style="font-size:10px;margin-top:4px;opacity:.6;text-align:right;">{{ msg.time }}</div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ msg.isAi }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;justify-content:flex-start;">
+              <div style="max-width:80%;border:1px solid var(--color-divider);padding:var(--space-2) var(--space-3);font-size:14px;line-height:1.5;">
+                <div>{{ msg.text }}</div>
+                <div style="font-size:10px;margin-top:4px;opacity:.6;">{{ msg.time }}</div>
+              </div>
+            </div>
+          </sc-if>
+        </sc-for>
+        <sc-if value="{{ isAiThinking }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;justify-content:flex-start;">
+            <div style="border:1px solid var(--color-divider);padding:var(--space-2) var(--space-3);display:flex;align-items:center;gap:8px;font-size:13px;color:color-mix(in srgb, var(--color-text) 55%, transparent);">
+              <span style="display:inline-block;width:12px;height:12px;border:2px solid color-mix(in srgb, currentColor 25%, transparent);border-top-color:currentColor;border-radius:50%;animation:om-spin .75s linear infinite;"></span>
+              <span>生成中...</span>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="padding:var(--space-4);border-top:1px solid var(--color-divider);display:flex;gap:var(--space-2);align-items:center;">
+        <input class="input" type="text" placeholder="描述你想生成的角色或道具…" value="{{ chatInputValue }}" onChange="{{ onChatInputChange }}" onKeyDown="{{ onChatInputKeyDown }}" style="flex:1;" />
+        <button type="button" class="btn btn-primary blueprint" disabled="{{ sendDisabled }}" onClick="{{ onSendMessage }}" style="position:relative;flex:none;">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <sc-if value="{{ isAiThinking }}" hint-placeholder-val="{{ false }}">
+            <span style="display:inline-block;width:13px;height:13px;border:2px solid color-mix(in srgb, currentColor 25%, transparent);border-top-color:currentColor;border-radius:50%;animation:om-spin .75s linear infinite;"></span>
+          </sc-if>
+          <sc-if value="{{ isSendIdle }}" hint-placeholder-val="{{ true }}">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+          </sc-if>
+          送出
+        </button>
+      </div>
+    </section>
+
+    <section style="display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden;">
+      <header style="padding:var(--space-4) var(--space-4) var(--space-3);border-bottom:1px solid var(--color-divider);">
+        <div style="font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent);">生成圖片</div>
+        <div style="font-size:11px;margin-top:4px;color:color-mix(in srgb, var(--color-text) 55%, transparent);">點選卡片上的按鈕，用該張圖生成三視圖</div>
+      </header>
+
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:var(--space-6) var(--space-4);">
+        <div style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-6);">
+          <sc-for list="{{ imageCardsVM }}" as="card" hint-placeholder-count="2">
+            <div class="card blueprint" style="position:relative;">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+
+              <div class="blueprint" style="position:relative;aspect-ratio:1;background:repeating-linear-gradient(135deg, var(--color-surface) 0px, var(--color-surface) 9px, var(--color-neutral-300) 9px, var(--color-neutral-300) 10px);display:flex;align-items:center;justify-content:center;">
+                <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                <sc-if value="{{ card.isLoading }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+                    <span style="display:inline-block;width:20px;height:20px;border:2px solid color-mix(in srgb, var(--color-text) 20%, transparent);border-top-color:var(--color-accent);border-radius:50%;animation:om-spin .8s linear infinite;"></span>
+                    <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.05em;color:color-mix(in srgb, var(--color-text) 55%, transparent);">生成中...</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ card.isReady }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:.05em;color:color-mix(in srgb, var(--color-text) 55%, transparent);">{{ card.refCode }}</span>
+                </sc-if>
+              </div>
+
+              <p class="card-body" style="margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ card.prompt }}</p>
+
+              <div class="card-meta">
+                <span>{{ card.time }}</span>
+                <sc-if value="{{ card.usedBefore }}" hint-placeholder-val="{{ false }}">
+                  <span class="tag tag-outline">已生成三視圖</span>
+                </sc-if>
+              </div>
+
+              <button type="button" class="btn btn-secondary" disabled="{{ card.buttonDisabled }}" onClick="{{ card.onUseForThreeView }}" style="width:100%;">
+                <sc-if value="{{ card.creatingViews }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:inline-block;width:13px;height:13px;border:2px solid color-mix(in srgb, currentColor 25%, transparent);border-top-color:currentColor;border-radius:50%;animation:om-spin .75s linear infinite;"></span>
+                </sc-if>
+                <sc-if value="{{ card.notCreatingViews }}" hint-placeholder-val="{{ true }}">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg>
+                </sc-if>
+                {{ card.buttonLabel }}
+              </button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <sc-if value="{{ hasSession }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--color-neutral-900) 70%, transparent);animation:om-fade-in .18s ease;" onClick="{{ onBackdropClick }}">
+      <div class="dialog blueprint" style="position:relative;width:70vw;max-width:1100px;min-width:480px;max-height:85vh;overflow-y:auto;padding:var(--space-6);animation:om-modal-in .22s ease;" onClick="{{ stopPropagation }}">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div style="min-width:0;">
+            <div style="font-family:var(--font-heading);font-weight:600;font-size:18px;">三視圖確認</div>
+            <div style="font-size:12px;margin-top:4px;color:color-mix(in srgb, var(--color-text) 55%, transparent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ sessionVM.sourcePrompt }}</div>
+            <div style="font-size:11px;margin-top:2px;opacity:.55;">{{ sessionVM.createdAt }}</div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-icon" onClick="{{ sessionVM.onClose }}" title="關閉三視圖工作區">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-4);margin-top:var(--space-5);">
+          <sc-for list="{{ sessionVM.views }}" as="view" hint-placeholder-count="3">
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 60%, transparent);">{{ view.label }}</span>
+                <button type="button" class="btn btn-ghost btn-icon" disabled="{{ view.isLoading }}" onClick="{{ view.onRegenerate }}" title="重新生成這張" style="width:24px;height:24px;">
+                  <sc-if value="{{ view.isLoading }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:inline-block;width:12px;height:12px;border:2px solid color-mix(in srgb, currentColor 25%, transparent);border-top-color:currentColor;border-radius:50%;animation:om-spin .75s linear infinite;"></span>
+                  </sc-if>
+                  <sc-if value="{{ view.isReady }}" hint-placeholder-val="{{ true }}">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+                  </sc-if>
+                </button>
+              </div>
+              <div class="blueprint" style="position:relative;aspect-ratio:1;background:repeating-linear-gradient(135deg, var(--color-surface) 0px, var(--color-surface) 9px, var(--color-neutral-300) 9px, var(--color-neutral-300) 10px);display:flex;align-items:center;justify-content:center;">
+                <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+                <sc-if value="{{ view.isLoading }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:inline-block;width:20px;height:20px;border:2px solid color-mix(in srgb, var(--color-text) 20%, transparent);border-top-color:var(--color-accent);border-radius:50%;animation:om-spin .8s linear infinite;"></span>
+                </sc-if>
+                <sc-if value="{{ view.isReady }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:color-mix(in srgb, var(--color-text) 55%, transparent);">{{ view.refCode }}</span>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <button type="button" class="btn btn-primary btn-block blueprint" disabled="{{ sessionVM.comfyDisabled }}" onClick="{{ sessionVM.onSendComfy }}" style="position:relative;margin-top:var(--space-5);width:100%;">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <sc-if value="{{ sessionVM.comfyLoading }}" hint-placeholder-val="{{ false }}">
+            <span style="display:inline-block;width:13px;height:13px;border:2px solid color-mix(in srgb, currentColor 25%, transparent);border-top-color:currentColor;border-radius:50%;animation:om-spin .75s linear infinite;"></span>
+          </sc-if>
+          {{ sessionVM.comfyLabel }}
+        </button>
+
+        <sc-if value="{{ sessionVM.showModel }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:var(--space-5);">
+            <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px;">3D 預覽</div>
+            <div class="blueprint" style="position:relative;">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <model-viewer src="https://modelviewer.dev/shared-assets/models/RobotExpressive.glb" camera-controls="true" auto-rotate="true" shadow-intensity="1" alt="生成的 3D 模型預覽" style="width:100%;height:280px;display:block;background:var(--color-surface);"></model-viewer>
+            </div>
+            <a href="https://modelviewer.dev/shared-assets/models/RobotExpressive.glb" download="model.glb" class="btn btn-secondary" style="margin-top:var(--space-3);display:inline-flex;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              下載 .glb
+            </a>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;simulateDelayMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1200,&quot;min&quot;:300,&quot;max&quot;:3000,&quot;step&quot;:100,&quot;tsType&quot;:&quot;number&quot;,&quot;unit&quot;:&quot;ms&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;skipLoadingStates&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = {
+    chatInput: '',
+    isAiThinking: false,
+    messages: [
+      { id: 1, role: 'user', text: '幫我畫一隻蒸氣龐克風格的機械貓，黃銅色機身，耳朵是齒輪造型', time: '14:02' },
+      { id: 2, role: 'ai', text: '生成完成，已加入右側的圖片區，你可以挑一張喜歡的繼續生成三視圖。', time: '14:02' },
+      { id: 3, role: 'user', text: '第二張的姿勢不錯，但可以再多一點蒸氣管線的細節嗎？', time: '14:05' },
+      { id: 4, role: 'ai', text: '了解，已依照這個方向重新生成一張，放在圖片區最上面了。', time: '14:05' },
+    ],
+    imageCards: [
+      { id: 2, prompt: '蒸氣龐克機械貓，黃銅機身，加強蒸氣管線細節', time: '14:05', status: 'ready', seed: 2, creatingViews: false, viewSessions: 0 },
+      { id: 1, prompt: '蒸氣龐克機械貓，黃銅色機身，齒輪造型耳朵', time: '14:02', status: 'ready', seed: 1, creatingViews: false, viewSessions: 0 },
+    ],
+    session: null,
+  };
+
+  idSeq = 100;
+
+  nextId() { return ++this.idSeq; }
+
+  formatNow() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  refCode(seed) { return 'IMG-' + String(1000 + (seed * 37) % 900).padStart(4, '0'); }
+
+  d(mult) {
+    if (this.props.skipLoadingStates) return 60;
+    const base = this.props.simulateDelayMs != null ? this.props.simulateDelayMs : 1200;
+    return Math.round(base * mult);
+  }
+
+  onChatInputChange = (e) => this.setState({ chatInput: e.target.value });
+
+  onChatInputKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      this.sendMessage();
+    }
+  };
+
+  sendMessage = () => {
+    const text = this.state.chatInput.trim();
+    if (!text || this.state.isAiThinking) return;
+    const userMsg = { id: this.nextId(), role: 'user', text, time: this.formatNow() };
+    this.setState(s => ({ messages: [...s.messages, userMsg], chatInput: '', isAiThinking: true }));
+    setTimeout(() => {
+      const aiMsg = { id: this.nextId(), role: 'ai', text: '生成完成，已加入右側的圖片區，你可以挑一張喜歡的繼續生成三視圖。', time: this.formatNow() };
+      const seed = this.nextId();
+      const newCard = { id: seed, prompt: text, time: this.formatNow(), status: 'loading', seed, creatingViews: false, viewSessions: 0 };
+      this.setState(s => ({ messages: [...s.messages, aiMsg], imageCards: [newCard, ...s.imageCards], isAiThinking: false }));
+      setTimeout(() => {
+        this.setState(s => ({ imageCards: s.imageCards.map(c => c.id === newCard.id ? { ...c, status: 'ready' } : c) }));
+      }, this.d(1.15));
+    }, this.d(0.75));
+  };
+
+  useForThreeView = (cardId) => {
+    const card = this.state.imageCards.find(c => c.id === cardId);
+    if (!card || card.status !== 'ready' || card.creatingViews) return;
+    this.setState(s => ({ imageCards: s.imageCards.map(c => c.id === cardId ? { ...c, creatingViews: true } : c) }));
+    setTimeout(() => {
+      const sessionId = this.nextId();
+      const sideSeed = this.nextId();
+      const backSeed = this.nextId();
+      const session = {
+        id: sessionId,
+        sourcePrompt: card.prompt,
+        createdAt: this.formatNow(),
+        views: {
+          front: { status: 'ready', seed: card.seed },
+          side: { status: 'loading', seed: sideSeed },
+          back: { status: 'loading', seed: backSeed },
+        },
+        comfyStatus: 'idle',
+      };
+      this.setState(s => ({
+        session,
+        imageCards: s.imageCards.map(c => c.id === cardId ? { ...c, creatingViews: false, viewSessions: c.viewSessions + 1 } : c),
+      }));
+      setTimeout(() => this.resolveView(sessionId, 'side'), this.d(1.0));
+      setTimeout(() => this.resolveView(sessionId, 'back'), this.d(1.4));
+    }, this.d(0.85));
+  };
+
+  resolveView = (sessionId, key) => {
+    this.setState(s => {
+      if (!s.session || s.session.id !== sessionId) return {};
+      return { session: { ...s.session, views: { ...s.session.views, [key]: { ...s.session.views[key], status: 'ready' } } } };
+    });
+  };
+
+  regenerateView = (sessionId, key) => {
+    const sess = this.state.session;
+    if (!sess || sess.id !== sessionId || sess.views[key].status === 'loading') return;
+    const newSeed = this.nextId();
+    this.setState(s => ({
+      session: {
+        ...s.session,
+        views: { ...s.session.views, [key]: { status: 'loading', seed: newSeed } },
+        comfyStatus: s.session.comfyStatus === 'done' ? 'idle' : s.session.comfyStatus,
+      },
+    }));
+    setTimeout(() => this.resolveView(sessionId, key), this.d(0.9));
+  };
+
+  sendToComfy = (sessionId) => {
+    const sess = this.state.session;
+    if (!sess || sess.id !== sessionId) return;
+    const allReady = sess.views.front.status === 'ready' && sess.views.side.status === 'ready' && sess.views.back.status === 'ready';
+    if (!allReady || sess.comfyStatus === 'loading') return;
+    this.setState(s => ({ session: { ...s.session, comfyStatus: 'loading' } }));
+    setTimeout(() => {
+      this.setState(s => (s.session && s.session.id === sessionId ? { session: { ...s.session, comfyStatus: 'done' } } : {}));
+    }, this.d(1.5));
+  };
+
+  closeSession = () => {
+    this.setState({ session: null });
+  };
+
+  renderVals() {
+    const s = this.state;
+    const viewLabels = { front: '正面', side: '側面', back: '背面' };
+    const sess = s.session;
+    let sessionVM = null;
+    if (sess) {
+      const viewsArr = ['front', 'side', 'back'].map(key => {
+        const v = sess.views[key];
+        return {
+          key,
+          label: viewLabels[key],
+          isLoading: v.status === 'loading',
+          isReady: v.status === 'ready',
+          refCode: this.refCode(v.seed),
+          onRegenerate: () => this.regenerateView(sess.id, key),
+        };
+      });
+      const allReady = viewsArr.every(v => v.isReady);
+      sessionVM = {
+        id: sess.id,
+        sourcePrompt: sess.sourcePrompt,
+        createdAt: sess.createdAt,
+        views: viewsArr,
+        comfyDisabled: !allReady || sess.comfyStatus === 'loading',
+        comfyLoading: sess.comfyStatus === 'loading',
+        comfyLabel: sess.comfyStatus === 'loading' ? '生成中...' : (sess.comfyStatus === 'done' ? '重新生成 3D 模型' : '送到 ComfyUI 生成 3D'),
+        showModel: sess.comfyStatus === 'done',
+        onSendComfy: () => this.sendToComfy(sess.id),
+        onClose: () => this.closeSession(),
+      };
+    }
+
+    const imageCardsVM = s.imageCards.map(c => ({
+      id: c.id,
+      prompt: c.prompt,
+      time: c.time,
+      isLoading: c.status === 'loading',
+      isReady: c.status === 'ready',
+      refCode: this.refCode(c.seed),
+      creatingViews: c.creatingViews,
+      notCreatingViews: !c.creatingViews,
+      buttonLabel: c.creatingViews ? '生成中...' : '用這張生成三視圖',
+      buttonDisabled: c.creatingViews || c.status !== 'ready',
+      usedBefore: c.viewSessions > 0,
+      onUseForThreeView: () => this.useForThreeView(c.id),
+    }));
+
+    const messagesVM = s.messages.map(m => ({
+      id: m.id, text: m.text, time: m.time, isUser: m.role === 'user', isAi: m.role === 'ai',
+    }));
+
+    return {
+      messagesVM,
+      isAiThinking: s.isAiThinking,
+      isSendIdle: !s.isAiThinking,
+      chatInputValue: s.chatInput,
+      onChatInputChange: this.onChatInputChange,
+      onChatInputKeyDown: this.onChatInputKeyDown,
+      onSendMessage: this.sendMessage,
+      sendDisabled: !s.chatInput.trim() || s.isAiThinking,
+      imageCardsVM,
+      sessionVM,
+      hasSession: !!sessionVM,
+      onBackdropClick: this.closeSession,
+      stopPropagation: (e) => e.stopPropagation(),
+    };
+  }
+}
+
+</script>
+</body>
+</html>
