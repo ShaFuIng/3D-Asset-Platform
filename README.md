@@ -1,66 +1,32 @@
 # 生成式 AI 可編輯 3D 資產平台
 
-第一階段目標是建立 Vite + React + TypeScript 前端、FastAPI 後端，以及本機 ComfyUI API 連線檢查。
+本專案目標是建立一套可產生、預覽並逐步編輯 3D 資產的生成式 AI 平台。
 
-## 預設服務 Port
+目前第一階段已建立：
 
-- Frontend Vite: `http://localhost:5173`
-- Backend FastAPI: `http://127.0.0.1:8000`
-- ComfyUI: `http://127.0.0.1:8188`
+- Web 前端與 GLB 預覽介面
+- 後端 API 與服務健康檢查
+- 本機 ComfyUI 連線檢查
+- 團隊開發與交接文件架構
 
-## 安裝方式
+## 專案目錄
 
-Windows PowerShell：
-
-```powershell
-cd D:\生成式AI專題競賽\3D-Asset-Platform
-
-cd frontend
-npm install
-
-cd ..\backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+```text
+3D-Asset-Platform/
+├─ frontend/             # Web frontend and GLB preview
+├─ backend/              # FastAPI backend
+├─ workflows/            # ComfyUI API workflows
+├─ storage/              # Generated assets (not tracked by Git)
+├─ prototype-reference/  # Original UI reference; do not modify
+└─ docs/                 # Setup guides and development logs
 ```
 
-## 後端啟動方式
+## 文件入口
 
-```powershell
-cd D:\生成式AI專題競賽\3D-Asset-Platform\backend
-.\.venv\Scripts\Activate.ps1
-$env:COMFYUI_BASE_URL = "http://127.0.0.1:8188"
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
+完整的環境版本、團隊安裝方式、啟動順序、服務 Port 與停止方式，請先閱讀：
 
-健康檢查：
+- [專案文件與安裝指南](./docs/README.md)
+- [團隊開發紀錄](./docs/development-log/README.md)
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/health
-Invoke-RestMethod http://127.0.0.1:8000/api/comfy/health
-```
-
-## 前端啟動方式
-
-```powershell
-cd D:\生成式AI專題競賽\3D-Asset-Platform\frontend
-$env:VITE_API_BASE_URL = "http://127.0.0.1:8000"
-npm run dev
-```
-
-## ComfyUI 啟動順序
-
-1. 先啟動 ComfyUI，確認服務在 `http://127.0.0.1:8188`。
-2. 啟動 FastAPI 後端。
-3. 啟動 Vite 前端。
-
-若 ComfyUI 尚未啟動，`GET /api/comfy/health` 會回傳 `disconnected`，後端不會崩潰。
-
-## 如何停止服務
-
-在各服務的 PowerShell 視窗按 `Ctrl + C`。若已啟用 Python virtual environment，可執行：
-
-```powershell
-deactivate
-```
-
+修改程式前，請先查看負責範圍對應的最新開發紀錄，以及根目錄的
+[`AGENTS.md`](./AGENTS.md)。

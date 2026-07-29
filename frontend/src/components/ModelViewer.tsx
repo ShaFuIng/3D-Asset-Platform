@@ -10,7 +10,11 @@ export function ModelViewer({ src }: ModelViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
   if (!src) {
-    return <div className="viewer-placeholder">No GLB URL configured.</div>;
+    return (
+      <div className="viewer-placeholder">
+        No GLB model is available yet. A generated model will appear here.
+      </div>
+    );
   }
 
   return (
@@ -37,4 +41,3 @@ export function ModelViewer({ src }: ModelViewerProps) {
     </div>
   );
 }
-

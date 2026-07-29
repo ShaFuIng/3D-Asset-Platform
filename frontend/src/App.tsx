@@ -9,7 +9,7 @@ type HealthState = {
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
-const sampleGlbUrl = '/sample.glb';
+const sampleGlbUrl: string | undefined = undefined;
 
 async function fetchHealth(path: string): Promise<HealthState> {
   try {
@@ -69,11 +69,10 @@ export default function App() {
       <section className="preview-area">
         <div className="preview-header">
           <h2>GLB Preview</h2>
-          <span>{sampleGlbUrl}</span>
+          <span>{sampleGlbUrl ?? 'No model selected'}</span>
         </div>
         <ModelViewer src={sampleGlbUrl} />
       </section>
     </main>
   );
 }
-
