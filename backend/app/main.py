@@ -1,54 +1,70 @@
-import os
-from pathlib import Path
-
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-COMFYUI_BASE_URL = os.getenv("COMFYUI_BASE_URL", "http://127.0.0.1:8188")
-
-app = FastAPI(title="3D Asset Platform API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=False,
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
+from .config import Settings, settings
+from .errors import register_error_handlers
+from .routers import images, jobs_3d
+from .services.comfy_client import ComfyClient
+from .services.jobs import JobStore
+from .services.openai_client import OpenAIImageClient
+from .storage import AssetStorage
 
 
-@app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {
-        "status": "connected",
-        "service": "backend",
-        "message": "FastAPI backend is running.",
-    }
+def create_app(app_settings: Settings = settings) -> FastAPI:
+    app = FastAPI(title="3D Asset Platform API")
+    app.state.settings = app_settings
+    app.state.storage = AssetStorage(app_settings)
+    app.state.job_store = JobStore()
+    app.state.comfy_client = ComfyClient(app_settings)
+    app.state.openai_client = OpenAIImageClient(app_settings)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
+    )
+    register_error_handlers(app)
+    app.include_router(images.router)
+    app.include_router(jobs_3d.router)
+    register_health_routes(app)
+    return app
 
 
-@app.get("/api/comfy/health")
-async def comfy_health() -> dict[str, str]:
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"{COMFYUI_BASE_URL}/system_stats")
-            response.raise_for_status()
-    except httpx.HTTPError as exc:
+def register_health_routes(app: FastAPI) -> None:
+    @app.get("/api/health")
+    async def health() -> dict[str, str]:
         return {
-            "status": "disconnected",
-            "service": "comfyui",
-            "base_url": COMFYUI_BASE_URL,
-            "message": f"ComfyUI is not reachable: {exc}",
+            "status": "connected",
+            "service": "backend",
+            "message": "FastAPI backend is running.",
         }
 
-    return {
-        "status": "connected",
-        "service": "comfyui",
-        "base_url": COMFYUI_BASE_URL,
-        "message": "ComfyUI API is reachable.",
-    }
+    @app.get("/api/comfy/health")
+    async def comfy_health() -> dict[str, str]:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.get(f"{app.state.settings.comfyui_base_url}/system_stats")
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            return {
+                "status": "disconnected",
+                "service": "comfyui",
+                "base_url": app.state.settings.comfyui_base_url,
+                "message": f"ComfyUI is not reachable: {exc}",
+            }
+
+        return {
+            "status": "connected",
+            "service": "comfyui",
+            "base_url": app.state.settings.comfyui_base_url,
+            "message": "ComfyUI API is reachable.",
+        }
+
+
+app = create_app()
