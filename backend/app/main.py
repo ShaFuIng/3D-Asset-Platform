@@ -1,11 +1,10 @@
-import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, settings
 from .errors import register_error_handlers
 from .routers import images, jobs_3d
-from .services.comfy_client import ComfyClient
+from .services.comfy_client import ComfyClient, ComfyClientError
 from .services.jobs import JobStore
 from .services.openai_client import OpenAIImageClient
 from .storage import AssetStorage
@@ -16,6 +15,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     app.state.settings = app_settings
     app.state.storage = AssetStorage(app_settings)
     app.state.job_store = JobStore()
+    app.state.background_tasks = set()
     app.state.comfy_client = ComfyClient(app_settings)
     app.state.openai_client = OpenAIImageClient(app_settings)
 
@@ -48,15 +48,13 @@ def register_health_routes(app: FastAPI) -> None:
     @app.get("/api/comfy/health")
     async def comfy_health() -> dict[str, str]:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                response = await client.get(f"{app.state.settings.comfyui_base_url}/system_stats")
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
+            await app.state.comfy_client.health()
+        except ComfyClientError:
             return {
                 "status": "disconnected",
                 "service": "comfyui",
                 "base_url": app.state.settings.comfyui_base_url,
-                "message": f"ComfyUI is not reachable: {exc}",
+                "message": "ComfyUI is not reachable.",
             }
 
         return {

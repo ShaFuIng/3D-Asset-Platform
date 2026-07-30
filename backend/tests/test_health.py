@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
-import httpx
+
+from tests.conftest import FakeComfyClient
 
 
 def test_health_contract(client: TestClient) -> None:
@@ -12,18 +13,15 @@ def test_health_contract(client: TestClient) -> None:
     }
 
 
-def test_comfy_health_disconnected_contract(client: TestClient, monkeypatch) -> None:
-    async def fake_get(self, url):
-        raise httpx.ConnectError("failed")
-
-    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+def test_comfy_health_disconnected_contract(client: TestClient) -> None:
+    client.app.state.comfy_client = FakeComfyClient(available=False)
     response = client.get("/api/comfy/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "disconnected"
     assert data["service"] == "comfyui"
     assert data["base_url"] == "http://127.0.0.1:8188"
-    assert "ComfyUI is not reachable" in data["message"]
+    assert data["message"] == "ComfyUI is not reachable."
 
 
 def test_openai_health_without_key(client: TestClient) -> None:

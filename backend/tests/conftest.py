@@ -1,4 +1,5 @@
 import base64
+import struct
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGA"
     "WjR9awAAAABJRU5ErkJggg=="
 )
+GLB_BYTES = b"glTF" + struct.pack("<II", 2, 12)
 
 
 class FakeOpenAIClient:
@@ -32,6 +34,12 @@ class FakeComfyClient:
         self.timeout = timeout
         self.workflow_error = workflow_error
         self.last_workflow = None
+
+    async def health(self) -> None:
+        if not self.available:
+            from app.services.comfy_client import ComfyClientError
+
+            raise ComfyClientError("ComfyUI is not reachable.")
 
     async def ensure_available(self) -> None:
         if not self.available:
@@ -64,7 +72,7 @@ class FakeComfyClient:
         return {"filename": "model.glb", "subfolder": "", "type": "output"}
 
     async def download_output(self, output, destination: Path) -> None:
-        destination.write_bytes(b"glb-data")
+        destination.write_bytes(GLB_BYTES)
 
     def parse_glb_output(self, output):
         from app.services.comfy_client import ComfyClient
@@ -117,4 +125,3 @@ def make_job(job_id: str, status: JobStatus, model_path: Path | None = None, pro
         prompt_id=prompt_id,
         model_path=model_path,
     )
-

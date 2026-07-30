@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import json
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -106,11 +107,15 @@ class ComfyClient:
     def parse_glb_output(self, output: dict[str, Any]) -> dict[str, str] | None:
         for key in ("3d", "gltf", "glb", "files"):
             values = output.get(key)
-            if isinstance(values, list) and values:
-                item = values[0]
-                if isinstance(item, dict) and item.get("filename"):
+            if isinstance(values, list):
+                for item in values:
+                    if not isinstance(item, dict):
+                        continue
+                    filename = str(item.get("filename", ""))
+                    if Path(filename).suffix.lower() != ".glb":
+                        continue
                     return {
-                        "filename": str(item.get("filename", "")),
+                        "filename": filename,
                         "subfolder": str(item.get("subfolder", "")),
                         "type": str(item.get("type", "output")),
                     }
@@ -126,9 +131,21 @@ class ComfyClient:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.get(f"{self.settings.comfyui_base_url}/view", params=params)
                 response.raise_for_status()
-                destination.write_bytes(response.content)
+                content = response.content
+                if not self._is_valid_glb(content):
+                    raise ComfyClientError("ComfyUI returned an invalid GLB file.")
+                destination.write_bytes(content)
+        except ComfyClientError:
+            raise
         except (httpx.HTTPError, OSError) as exc:
             raise ComfyClientError("ComfyUI GLB download failed.") from exc
+
+    @staticmethod
+    def _is_valid_glb(content: bytes) -> bool:
+        if len(content) < 12 or content[:4] != b"glTF":
+            return False
+        version, declared_length = struct.unpack("<II", content[4:12])
+        return version == 2 and declared_length == len(content)
 
     async def _history(self, prompt_id: str) -> dict[str, Any]:
         try:
@@ -141,4 +158,3 @@ class ComfyClient:
         if not isinstance(payload, dict):
             raise ComfyClientError("ComfyUI history response was invalid.")
         return payload
-

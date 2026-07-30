@@ -1,4 +1,5 @@
 import asyncio
+import struct
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,7 +8,7 @@ from app.errors import ApiError
 from app.schemas import JobStatus
 from app.services.comfy_client import ComfyClient, ComfyClientError
 from app.services.jobs import run_3d_job
-from tests.conftest import FakeComfyClient, make_job
+from tests.conftest import FakeComfyClient, GLB_BYTES, make_job
 
 
 def test_create_3d_job_success(client: TestClient, image_id: str) -> None:
@@ -17,6 +18,33 @@ def test_create_3d_job_success(client: TestClient, image_id: str) -> None:
     assert data["job_id"]
     assert data["status"] == "queued"
     assert data["status_url"] == f"/api/3d/jobs/{data['job_id']}"
+
+
+def test_create_3d_job_keeps_background_task_reference(
+    client: TestClient, image_id: str, monkeypatch
+) -> None:
+    class FakeTask:
+        def __init__(self) -> None:
+            self.callback = None
+
+        def add_done_callback(self, callback) -> None:
+            self.callback = callback
+
+    task = FakeTask()
+
+    def fake_create_task(coroutine):
+        coroutine.close()
+        return task
+
+    monkeypatch.setattr("app.routers.jobs_3d.asyncio.create_task", fake_create_task)
+    client.app.state.disable_background_jobs = False
+
+    response = client.post("/api/3d/jobs", json={"image_id": image_id})
+
+    assert response.status_code == 202
+    assert task in client.app.state.background_tasks
+    task.callback(task)
+    assert task not in client.app.state.background_tasks
 
 
 def test_create_3d_job_missing_image_returns_404(client: TestClient) -> None:
@@ -40,7 +68,7 @@ def test_job_status_schema_for_all_states(client: TestClient, tmp_path) -> None:
             job = await client.app.state.job_store.create()
             model_path = tmp_path / f"{job.job_id}.glb"
             if status == JobStatus.succeeded:
-                model_path.write_bytes(b"glb-data")
+                model_path.write_bytes(GLB_BYTES)
             await client.app.state.job_store.update(
                 job.job_id,
                 status=status,
@@ -64,7 +92,7 @@ def test_completed_job_can_download_model(client: TestClient, tmp_path) -> None:
     async def prepare():
         job = await client.app.state.job_store.create()
         model_path = tmp_path / f"{job.job_id}.glb"
-        model_path.write_bytes(b"glb-data")
+        model_path.write_bytes(GLB_BYTES)
         await client.app.state.job_store.update(
             job.job_id,
             status=JobStatus.succeeded,
@@ -77,7 +105,7 @@ def test_completed_job_can_download_model(client: TestClient, tmp_path) -> None:
     response = client.get(f"/api/3d/jobs/{job_id}/model")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("model/gltf-binary")
-    assert response.content == b"glb-data"
+    assert response.content == GLB_BYTES
 
 
 def test_unfinished_job_model_returns_409(client: TestClient) -> None:
@@ -112,6 +140,105 @@ def test_node_10_glb_output_parsing(settings) -> None:
         "subfolder": "mesh",
         "type": "output",
     }
+
+
+def test_node_10_glb_output_skips_non_glb_files(settings) -> None:
+    client = ComfyClient(settings)
+    output = {
+        "files": [
+            {"filename": "preview.png", "subfolder": "mesh", "type": "output"},
+            {"filename": "model.GLB", "subfolder": "mesh", "type": "output"},
+        ]
+    }
+    assert client.parse_glb_output(output) == {
+        "filename": "model.GLB",
+        "subfolder": "mesh",
+        "type": "output",
+    }
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"",
+        b"not-a-glb",
+        b"glTF" + struct.pack("<II", 1, 12),
+        b"glTF" + struct.pack("<II", 2, 20),
+    ],
+)
+def test_glb_validation_rejects_invalid_content(settings, content: bytes) -> None:
+    assert ComfyClient(settings)._is_valid_glb(content) is False
+
+
+def test_glb_validation_accepts_version_2_header(settings) -> None:
+    assert ComfyClient(settings)._is_valid_glb(GLB_BYTES) is True
+
+
+def test_download_output_rejects_invalid_glb_without_writing(settings, tmp_path, monkeypatch) -> None:
+    class FakeResponse:
+        content = b"not-a-glb"
+
+        def raise_for_status(self) -> None:
+            pass
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.services.comfy_client.httpx.AsyncClient", FakeAsyncClient)
+    destination = tmp_path / "model.glb"
+
+    with pytest.raises(ComfyClientError, match="invalid GLB"):
+        asyncio.run(
+            ComfyClient(settings).download_output(
+                {"filename": "model.glb", "subfolder": "", "type": "output"},
+                destination,
+            )
+        )
+
+    assert not destination.exists()
+
+
+def test_download_output_writes_valid_glb(settings, tmp_path, monkeypatch) -> None:
+    class FakeResponse:
+        content = GLB_BYTES
+
+        def raise_for_status(self) -> None:
+            pass
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            pass
+
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.services.comfy_client.httpx.AsyncClient", FakeAsyncClient)
+    destination = tmp_path / "model.glb"
+
+    asyncio.run(
+        ComfyClient(settings).download_output(
+            {"filename": "model.glb", "subfolder": "", "type": "output"},
+            destination,
+        )
+    )
+
+    assert destination.read_bytes() == GLB_BYTES
 
 
 def test_comfyui_timeout_updates_job_failed(client: TestClient, image_id: str) -> None:
@@ -151,4 +278,3 @@ def test_run_3d_job_succeeds(client: TestClient, image_id: str) -> None:
     assert job.status == JobStatus.succeeded
     assert job.prompt_id == "prompt-123"
     assert job.model_path.exists()
-
