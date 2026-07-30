@@ -1,5 +1,5 @@
 import '@google/model-viewer';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type ModelViewerProps = {
   src?: string;
@@ -8,6 +8,11 @@ type ModelViewerProps = {
 export function ModelViewer({ src }: ModelViewerProps) {
   const [isLoading, setIsLoading] = useState(Boolean(src));
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsLoading(Boolean(src));
+    setError(null);
+  }, [src]);
 
   if (!src) {
     return (
