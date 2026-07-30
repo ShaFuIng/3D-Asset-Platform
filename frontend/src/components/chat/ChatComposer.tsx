@@ -37,14 +37,14 @@ export function ChatComposer({
     <form className="chat-composer" onSubmit={handleSubmit}>
       {isDisabled && disabledReason && <p className="hint warning">{disabledReason}</p>}
       <label className="sr-only" htmlFor="prompt-input">
-        輸入生成圖片的描述
+        圖片生成提示詞
       </label>
       <textarea
         id="prompt-input"
         value={prompt}
         onChange={(event) => onPromptChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="描述你想生成的角色或道具..."
+        placeholder="描述你想生成或修改的角色、物件或風格..."
         disabled={isGenerating}
       />
       <div className="chat-actions">
@@ -70,4 +70,3 @@ export function ChatComposer({
     </form>
   );
 }
-

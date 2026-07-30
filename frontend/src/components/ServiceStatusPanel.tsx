@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router-dom';
 import type { ServiceHealthState } from '../types/api';
 
 type ServiceStatusPanelProps = {
@@ -16,7 +17,13 @@ export function ServiceStatusPanel({ backend, openai, comfy }: ServiceStatusPane
     <header className="app-header">
       <div className="brand-block">
         <p className="eyebrow">GPT Image to Hunyuan3D</p>
-        <h1>聊天配 3D 生成工具</h1>
+        <h1>生成式 AI 3D 資產平台</h1>
+        <nav className="app-nav" aria-label="主要頁面">
+          <NavLink to="/" end>
+            單圖轉 3D
+          </NavLink>
+          <NavLink to="/three-view">三視圖</NavLink>
+        </nav>
       </div>
 
       <div className="status-grid">

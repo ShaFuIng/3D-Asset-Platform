@@ -11,12 +11,12 @@ export function ImageGallery({ images, selectedImageId, onSelect }: ImageGallery
   return (
     <section className="panel workspace-panel">
       <div className="section-header">
-        <h2>生成圖片</h2>
+        <h2>圖片</h2>
         <span>{images.length ? `${images.length} 張圖片` : '尚無圖片'}</span>
       </div>
 
       {images.length === 0 ? (
-        <div className="empty-state">對話生成或上傳的圖片會出現在這裡。</div>
+        <div className="empty-state">從對話生成或上傳圖片後，圖片會出現在這裡。</div>
       ) : (
         <div className="gallery-grid">
           {images.map((image) => (

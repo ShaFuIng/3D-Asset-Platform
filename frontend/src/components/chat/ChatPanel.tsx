@@ -46,7 +46,7 @@ export function ChatPanel({
       <div className="chat-messages" aria-live="polite">
         {messages.length === 0 ? (
           <div className="empty-state chat-empty">
-            告訴我你想做成什麼 3D 物件；也可以直接上傳一張圖片來建立 3D 模型。
+            請輸入要生成的 3D 參考圖片描述，或上傳一張圖片來建立 3D 模型。
           </div>
         ) : (
           messages.map((message) => <ChatMessage key={message.id} message={message} />)

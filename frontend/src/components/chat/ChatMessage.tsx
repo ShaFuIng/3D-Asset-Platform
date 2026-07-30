@@ -16,4 +16,3 @@ export function ChatMessage({ message }: ChatMessageProps) {
     </article>
   );
 }
-

@@ -26,7 +26,7 @@ export function JobPanel({
   return (
     <section className="panel workspace-panel model-panel">
       <div className="section-header">
-        <h2>轉成 3D</h2>
+        <h2>3D 工作區</h2>
         <span>{job ? job.status : '尚未建立 Job'}</span>
       </div>
 
@@ -34,7 +34,7 @@ export function JobPanel({
         <div className="selected-image">
           <img src={resolveApiUrl(selectedImage.url)} alt="Selected source preview" />
           <div>
-            <span>選定 image_id</span>
+            <span>選取的 image_id</span>
             <code>{selectedImage.image_id}</code>
           </div>
         </div>
@@ -46,7 +46,7 @@ export function JobPanel({
         {isCreatingJob ? 'Creating Job...' : '建立 3D Job'}
       </button>
 
-      {isComfyDisconnected && <p className="hint warning">ComfyUI 未連線，暫時無法建立 3D Job。</p>}
+      {isComfyDisconnected && <p className="hint warning">ComfyUI 未連線，因此無法建立 3D Job。</p>}
       {error && <p className="hint error">{error}</p>}
 
       {job && (
