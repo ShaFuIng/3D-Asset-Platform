@@ -1,11 +1,15 @@
 import base64
 import binascii
+import logging
+from typing import Any
 
 from openai import APIError, AsyncOpenAI, OpenAIError
 
 from ..config import Settings
 from ..errors import ApiError
 from ..schemas import ChatMessage
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIImageClient:
@@ -25,6 +29,7 @@ class OpenAIImageClient:
                 tool_choice={"type": "image_generation"},
             )
         except (APIError, OpenAIError) as exc:
+            log_openai_error(exc)
             raise ApiError(502, "openai_request_failed", "OpenAI image generation failed.") from exc
 
         image_call = next(
@@ -53,4 +58,45 @@ class OpenAIImageClient:
             }
             for message in messages
         ]
+
+
+def log_openai_error(exc: OpenAIError) -> None:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", {}) or {}
+    status_code = getattr(exc, "status_code", None) or getattr(response, "status_code", None)
+    request_id = (
+        getattr(exc, "request_id", None)
+        or getattr(exc, "_request_id", None)
+        or headers.get("x-request-id")
+    )
+    error_code = getattr(exc, "code", None) or _error_body_value(exc, "code")
+    safe_message = _safe_error_message(exc)
+
+    logger.warning(
+        "OpenAI image generation failed: type=%s status_code=%s error_code=%s request_id=%s message=%s",
+        type(exc).__name__,
+        status_code or "unknown",
+        error_code or "unknown",
+        request_id or "unknown",
+        safe_message,
+    )
+
+
+def _error_body_value(exc: OpenAIError, key: str) -> str | None:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            value = error.get(key)
+            return str(value) if value is not None else None
+        value = body.get(key)
+        return str(value) if value is not None else None
+    return None
+
+
+def _safe_error_message(exc: OpenAIError) -> str:
+    message: Any = getattr(exc, "message", None) or _error_body_value(exc, "message")
+    if message is None:
+        message = str(exc) or type(exc).__name__
+    return " ".join(str(message).split())[:500]
 
