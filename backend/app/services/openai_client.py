@@ -11,6 +11,19 @@ from ..schemas import ChatMessage
 
 logger = logging.getLogger(__name__)
 
+IMAGE_GENERATION_INSTRUCTIONS = """
+Create image outputs that are suitable as 3D generation references.
+Keep the complete main subject centered and fully visible with comfortable margins.
+Use a clean, simple, uncluttered background.
+Maintain a clear and unobstructed silhouette.
+Avoid cropped body parts or object parts.
+Avoid text, watermarks, frames, and unrelated props.
+Avoid strong perspective distortion and motion blur.
+During edits, preserve identity, proportions, pose, clothing, accessories, colors,
+and other details unless the user explicitly requests changing them.
+Do not force a fixed art style; follow the user's requested subject, content, and style.
+""".strip()
+
 
 class OpenAIImageClient:
     def __init__(self, settings: Settings) -> None:
@@ -27,6 +40,7 @@ class OpenAIImageClient:
         client = AsyncOpenAI(api_key=self.settings.openai_api_key)
         response_request: dict[str, Any] = {
             "model": self.settings.openai_response_model,
+            "instructions": IMAGE_GENERATION_INSTRUCTIONS,
             "input": self._to_response_input(messages),
             "tools": [{"type": "image_generation", "action": "auto"}],
             "tool_choice": {"type": "image_generation"},
