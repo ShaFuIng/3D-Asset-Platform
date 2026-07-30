@@ -49,6 +49,7 @@ export type GenerateImageResponse = {
   url: string;
   assistant_message: string;
   image_prompt: string | null;
+  response_id: string;
 };
 
 export type UploadImageResponse = {

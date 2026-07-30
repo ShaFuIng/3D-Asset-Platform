@@ -16,18 +16,26 @@ class OpenAIImageClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    async def generate_image(self, messages: list[ChatMessage]) -> tuple[bytes, str | None]:
+    async def generate_image(
+        self,
+        messages: list[ChatMessage],
+        previous_response_id: str | None = None,
+    ) -> tuple[bytes, str | None, str]:
         if not self.settings.openai_api_key:
             raise ApiError(503, "openai_not_configured", "OPENAI_API_KEY is not configured.")
 
         client = AsyncOpenAI(api_key=self.settings.openai_api_key)
+        response_request: dict[str, Any] = {
+            "model": self.settings.openai_response_model,
+            "input": self._to_response_input(messages),
+            "tools": [{"type": "image_generation", "action": "auto"}],
+            "tool_choice": {"type": "image_generation"},
+        }
+        if previous_response_id:
+            response_request["previous_response_id"] = previous_response_id
+
         try:
-            response = await client.responses.create(
-                model=self.settings.openai_response_model,
-                input=self._to_response_input(messages),
-                tools=[{"type": "image_generation", "action": "generate"}],
-                tool_choice={"type": "image_generation"},
-            )
+            response = await client.responses.create(**response_request)
         except (APIError, OpenAIError) as exc:
             log_openai_error(exc)
             raise ApiError(502, "openai_request_failed", "OpenAI image generation failed.") from exc
@@ -48,7 +56,7 @@ class OpenAIImageClient:
         except (binascii.Error, TypeError) as exc:
             raise ApiError(502, "openai_invalid_image", "OpenAI returned invalid image data.") from exc
 
-        return image_bytes, getattr(image_call, "revised_prompt", None)
+        return image_bytes, getattr(image_call, "revised_prompt", None), response.id
 
     def _to_response_input(self, messages: list[ChatMessage]) -> list[dict[str, object]]:
         return [

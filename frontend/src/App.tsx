@@ -63,6 +63,7 @@ export default function App() {
   const [comfy, setComfy] = useState<ServiceHealthState>(checkingState);
   const [prompt, setPrompt] = useState('');
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
+  const [previousResponseId, setPreviousResponseId] = useState<string>();
   const [images, setImages] = useState<ImageAsset[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | undefined>();
   const [activityMessage, setActivityMessage] = useState<string>();
@@ -183,8 +184,12 @@ export default function App() {
     setActivityMessage('正在生成圖片...');
 
     try {
-      const data = await generateImage(toApiMessages(nextConversation));
+      const requestMessages = previousResponseId
+        ? toApiMessages([userMessage])
+        : toApiMessages(nextConversation);
+      const data = await generateImage(requestMessages, previousResponseId);
       addAndSelectImage({ ...data, source: 'generated' });
+      setPreviousResponseId(data.response_id);
       setConversation((current) => [
         ...current,
         createConversationMessage('assistant', data.assistant_message, data.image_id),

@@ -19,6 +19,7 @@ class ChatMessage(BaseModel):
 
 class GenerateImageRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=20)
+    previous_response_id: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator("messages")
     @classmethod
@@ -37,6 +38,7 @@ class ImageResponse(BaseModel):
 class GeneratedImageResponse(ImageResponse):
     assistant_message: str
     image_prompt: str | None
+    response_id: str
 
 
 class Create3DJobRequest(BaseModel):
@@ -66,4 +68,3 @@ class JobResponse(BaseModel):
     message: str
     prompt_id: str | None
     result: JobResult | None
-

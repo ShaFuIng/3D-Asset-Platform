@@ -46,12 +46,16 @@ export async function getComfyHealth(signal?: AbortSignal): Promise<ComfyHealthR
 
 export async function generateImage(
   messages: ChatMessage[],
+  previousResponseId?: string,
   signal?: AbortSignal,
 ): Promise<GenerateImageResponse> {
   return requestJson('/api/images/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({
+      messages,
+      previous_response_id: previousResponseId,
+    }),
     signal,
   });
 }
@@ -112,4 +116,3 @@ async function readJson<T>(response: Response): Promise<T> {
     return {} as T;
   }
 }
-

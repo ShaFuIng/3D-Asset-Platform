@@ -21,11 +21,13 @@ class FakeOpenAIClient:
     def __init__(self, image_bytes: bytes = PNG_BYTES, error=None) -> None:
         self.image_bytes = image_bytes
         self.error = error
+        self.previous_response_id = None
 
-    async def generate_image(self, messages):
+    async def generate_image(self, messages, previous_response_id=None):
+        self.previous_response_id = previous_response_id
         if self.error:
             raise self.error
-        return self.image_bytes, "A revised prompt."
+        return self.image_bytes, "A revised prompt.", "response-123"
 
 
 class FakeComfyClient:

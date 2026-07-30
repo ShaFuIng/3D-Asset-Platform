@@ -47,7 +47,10 @@ async def upload_image(request: Request, image: UploadFile) -> ImageResponse:
     status_code=status.HTTP_201_CREATED,
 )
 async def generate_image(request: Request, payload: GenerateImageRequest) -> GeneratedImageResponse:
-    image_bytes, image_prompt = await request.app.state.openai_client.generate_image(payload.messages)
+    image_bytes, image_prompt, response_id = await request.app.state.openai_client.generate_image(
+        payload.messages,
+        payload.previous_response_id,
+    )
     record = request.app.state.storage.save_generated_image(image_bytes)
     return GeneratedImageResponse(
         image_id=record.image_id,
@@ -55,6 +58,7 @@ async def generate_image(request: Request, payload: GenerateImageRequest) -> Gen
         url=f"/api/assets/images/{record.filename}",
         assistant_message="已依照你的需求生成圖片。",
         image_prompt=image_prompt,
+        response_id=response_id,
     )
 
 
