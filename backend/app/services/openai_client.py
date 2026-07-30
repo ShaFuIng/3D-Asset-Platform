@@ -54,7 +54,12 @@ class OpenAIImageClient:
         return [
             {
                 "role": message.role,
-                "content": [{"type": "input_text", "text": message.content}],
+                "content": [
+                    {
+                        "type": "output_text" if message.role == "assistant" else "input_text",
+                        "text": message.content,
+                    }
+                ],
             }
             for message in messages
         ]
@@ -99,4 +104,3 @@ def _safe_error_message(exc: OpenAIError) -> str:
     if message is None:
         message = str(exc) or type(exc).__name__
     return " ".join(str(message).split())[:500]
-
