@@ -1,0 +1,16 @@
+let currentFile = null;
+const messages = [];
+const status = document.querySelector('#status');
+const to3d = document.querySelector('#to3d');
+const imageBox = document.querySelector('#imageBox');
+const messageBox = document.querySelector('#messages');
+const gallery = document.querySelector('#gallery');
+function setStatus(message) { status.textContent = message; }
+function addMessage(role, content) { messages.push({ role, content }); const bubble = document.createElement('div'); bubble.className = `message ${role}`; bubble.textContent = content; messageBox.appendChild(bubble); messageBox.scrollTop = messageBox.scrollHeight; }
+function selectImage(data, card) { currentFile = data.file; imageBox.className = ''; imageBox.innerHTML = `<img src="${data.url}?v=${Date.now()}" alt="選擇的圖片">`; to3d.disabled = false; document.querySelector('#download').hidden = true; document.querySelectorAll('.image-card').forEach(item => item.classList.remove('selected')); card?.classList.add('selected'); }
+function addImage(data) { gallery.classList.remove('empty'); const card = document.createElement('article'); card.className = 'image-card'; card.innerHTML = `<img src="${data.url}?v=${Date.now()}" alt="GPT 生成的圖片"><button type="button">用這張轉 3D</button>`; card.querySelector('button').onclick = () => selectImage(data, card); gallery.prepend(card); selectImage(data, card); }
+async function api(path, options) { const response = await fetch(path, options); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed'); return data; }
+(async () => { try { const health = await api('/api/health'); document.querySelector('#health').textContent = health.comfy ? (health.openai ? 'ComfyUI 與 OpenAI key 已就緒' : 'ComfyUI 已就緒；尚未設定 OpenAI key') : '找不到 ComfyUI，請先開啟 Comfy Desktop'; } catch { document.querySelector('#health').textContent = '無法檢查服務'; } })();
+document.querySelector('#chatForm').onsubmit = async event => { event.preventDefault(); const input = document.querySelector('#prompt'); const text = input.value.trim(); if (!text) return; addMessage('user', text); input.value = ''; try { setStatus('GPT 正在理解對話並生成圖片…'); const data = await api('/api/generate-image', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages})}); addMessage('assistant', data.assistant); addImage(data); setStatus('已生成圖片。你可繼續對話修改，或選一張轉成 3D。'); } catch (error) { addMessage('assistant', `發生錯誤：${error.message}`); setStatus(''); } };
+document.querySelector('#file').onchange = async event => { const file = event.target.files[0]; if (!file) return; try { setStatus('正在上傳圖片…'); const form = new FormData(); form.append('image', file); const data = await api('/api/upload',{method:'POST',body:form}); addMessage('assistant', '已加入你的圖片；可以直接選它轉成 3D。'); addImage(data); setStatus('圖片已就緒。'); } catch (error) { setStatus(`錯誤：${error.message}`); } };
+to3d.onclick = async () => { try { to3d.disabled = true; setStatus('Hunyuan3D 正在生成 GLB，可能需要幾分鐘…'); const data = await api('/api/create-3d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:currentFile})}); const link = document.querySelector('#download'); link.href = data.download; link.hidden = false; setStatus('完成！可下載 GLB。'); } catch (error) { setStatus(`錯誤：${error.message}`); to3d.disabled = false; } };

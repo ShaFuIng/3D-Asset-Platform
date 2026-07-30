@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>聊天配 3D 生成工具</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">LOCAL · GPT IMAGE → HUNYUAN3D 2.1</span><h1>聊天配 3D 生成工具</h1><p id="health">正在檢查服務…</p></header>
+    <section class="workspace">
+      <article class="panel chat-panel"><h2>對話</h2><div id="messages" class="messages"><div class="message assistant">告訴我你想做成什麼 3D 物件；之後也可以繼續說要修改哪個部分。</div></div><form id="chatForm" class="composer"><textarea id="prompt" placeholder="描述你想生成的角色或道具…" required></textarea><button>送出</button></form><label class="upload"><input id="file" type="file" accept="image/png,image/jpeg,image/webp">改用既有圖片</label></article>
+      <article class="panel gallery-panel"><h2>生成圖片</h2><div id="gallery" class="gallery empty">對話後生成的圖片會出現在這裡</div></article>
+      <article class="panel model-panel"><h2>轉成 3D</h2><div id="imageBox" class="empty">尚未選擇圖片</div><button id="to3d" disabled>送到 ComfyUI 生成 GLB</button><a id="download" hidden>下載 GLB</a><p id="status" role="status"></p></article>
+    </section>
+  </main><script src="app.js"></script>
+</body></html>
