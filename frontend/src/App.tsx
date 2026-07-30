@@ -10,11 +10,16 @@ import {
   resolveApiUrl,
   uploadImage,
 } from './api/client';
+import { ChatPanel } from './components/chat/ChatPanel';
 import { ImageGallery } from './components/ImageGallery';
 import { JobPanel } from './components/JobPanel';
-import { PromptComposer } from './components/PromptComposer';
 import { ServiceStatusPanel } from './components/ServiceStatusPanel';
-import type { ImageAsset, JobResponse, ServiceHealthState } from './types/api';
+import type { ChatMessage, ImageAsset, JobResponse, ServiceHealthState } from './types/api';
+import {
+  createMessageId,
+  formatMessageTime,
+  type ConversationMessage,
+} from './types/conversation';
 
 const checkingState: ServiceHealthState = { status: 'checking' };
 
@@ -28,14 +33,38 @@ function getErrorMessage(error: unknown): string {
   return '發生未知錯誤。';
 }
 
+function createConversationMessage(
+  role: ConversationMessage['role'],
+  content: string,
+  imageId?: string,
+): ConversationMessage {
+  return {
+    id: createMessageId(),
+    role,
+    content,
+    createdAt: formatMessageTime(),
+    imageId,
+  };
+}
+
+function toApiMessages(messages: ConversationMessage[]): ChatMessage[] {
+  return messages
+    .filter((message) => message.content.trim())
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+    }))
+    .slice(-20);
+}
+
 export default function App() {
   const [backend, setBackend] = useState<ServiceHealthState>(checkingState);
   const [openai, setOpenai] = useState<ServiceHealthState>(checkingState);
   const [comfy, setComfy] = useState<ServiceHealthState>(checkingState);
   const [prompt, setPrompt] = useState('');
+  const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [images, setImages] = useState<ImageAsset[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | undefined>();
-  const [assistantMessage, setAssistantMessage] = useState<string>();
   const [activityMessage, setActivityMessage] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -53,8 +82,8 @@ export default function App() {
   const isComfyDisconnected = comfy.status !== 'connected';
   const openaiDisabledReason =
     openai.status === 'checking'
-      ? 'Checking OpenAI configuration...'
-      : 'OpenAI API key is not configured. You can still upload a local image.';
+      ? '正在檢查 OpenAI 設定...'
+      : 'OpenAI API key 尚未設定；仍可上傳本機圖片。';
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,7 +128,7 @@ export default function App() {
           setJob(nextJob);
           if (nextJob.status === 'succeeded' && nextJob.result?.model_url) {
             setModelUrl(resolveApiUrl(nextJob.result.model_url));
-            setActivityMessage('3D model generation completed.');
+            setActivityMessage('3D 模型生成完成。');
           }
           if (nextJob.status === 'failed') {
             setActivityMessage(undefined);
@@ -141,19 +170,26 @@ export default function App() {
 
   async function handleGenerateImage() {
     const content = prompt.trim();
-    if (!content || isOpenAIDisabled) {
+    if (!content || isOpenAIDisabled || isGenerating) {
       return;
     }
 
+    const userMessage = createConversationMessage('user', content);
+    const nextConversation = [...conversation, userMessage];
+    setConversation(nextConversation);
+    setPrompt('');
     setIsGenerating(true);
     setErrorMessage(undefined);
-    setActivityMessage('Generating image...');
+    setActivityMessage('正在生成圖片...');
+
     try {
-      const data = await generateImage([{ role: 'user', content }]);
+      const data = await generateImage(toApiMessages(nextConversation));
       addAndSelectImage({ ...data, source: 'generated' });
-      setAssistantMessage(data.assistant_message);
-      setPrompt('');
-      setActivityMessage('Image generated.');
+      setConversation((current) => [
+        ...current,
+        createConversationMessage('assistant', data.assistant_message, data.image_id),
+      ]);
+      setActivityMessage('圖片已生成。');
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
       setActivityMessage(undefined);
@@ -163,14 +199,25 @@ export default function App() {
   }
 
   async function handleUploadImage(file: File) {
+    if (isUploading) {
+      return;
+    }
+
     setIsUploading(true);
     setErrorMessage(undefined);
-    setActivityMessage('Uploading image...');
+    setActivityMessage('正在上傳圖片...');
     try {
       const data = await uploadImage(file);
       addAndSelectImage({ ...data, source: 'uploaded' });
-      setAssistantMessage(undefined);
-      setActivityMessage('Image uploaded.');
+      setConversation((current) => [
+        ...current,
+        createConversationMessage(
+          'assistant',
+          '已加入你上傳的圖片，可以選擇它建立 3D 模型。',
+          data.image_id,
+        ),
+      ]);
+      setActivityMessage('圖片已就緒。');
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
       setActivityMessage(undefined);
@@ -180,14 +227,14 @@ export default function App() {
   }
 
   async function handleCreateJob() {
-    if (!selectedImage || isComfyDisconnected) {
+    if (!selectedImage || isComfyDisconnected || isCreatingJob) {
       return;
     }
 
     setIsCreatingJob(true);
     setErrorMessage(undefined);
     setModelUrl(undefined);
-    setActivityMessage('Creating 3D job...');
+    setActivityMessage('正在建立 3D Job...');
     setJob(undefined);
     try {
       const created = await create3DJob(selectedImage.image_id);
@@ -198,7 +245,7 @@ export default function App() {
         prompt_id: null,
         result: null,
       });
-      setActivityMessage('3D job created. Waiting for progress...');
+      setActivityMessage('3D Job 已建立，正在等待進度。');
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
       setActivityMessage(undefined);
@@ -209,7 +256,6 @@ export default function App() {
 
   function handleSelectImage(image: ImageAsset) {
     setSelectedImageId(image.image_id);
-    setAssistantMessage(image.assistant_message);
     resetJobState();
   }
 
@@ -218,26 +264,19 @@ export default function App() {
       <ServiceStatusPanel backend={backend} openai={openai} comfy={comfy} />
 
       <section className="workspace">
-        <div className="workspace-column">
-          <PromptComposer
-            prompt={prompt}
-            isGenerating={isGenerating}
-            isDisabled={isOpenAIDisabled}
-            disabledReason={openaiDisabledReason}
-            onPromptChange={setPrompt}
-            onSubmit={handleGenerateImage}
-            onUpload={handleUploadImage}
-          />
-
-          {(activityMessage || errorMessage || assistantMessage || isUploading) && (
-            <section className="panel feedback-panel">
-              {isUploading && <p className="hint">Uploading image...</p>}
-              {activityMessage && <p className="hint success">{activityMessage}</p>}
-              {assistantMessage && <p className="assistant-message">{assistantMessage}</p>}
-              {errorMessage && <p className="hint error">{errorMessage}</p>}
-            </section>
-          )}
-        </div>
+        <ChatPanel
+          messages={conversation}
+          prompt={prompt}
+          isGenerating={isGenerating}
+          isUploading={isUploading}
+          isDisabled={isOpenAIDisabled}
+          disabledReason={openaiDisabledReason}
+          activityMessage={activityMessage}
+          errorMessage={errorMessage}
+          onPromptChange={setPrompt}
+          onSubmit={handleGenerateImage}
+          onUpload={handleUploadImage}
+        />
 
         <ImageGallery
           images={images}

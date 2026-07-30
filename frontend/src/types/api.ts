@@ -28,7 +28,7 @@ export type ApiErrorBody = {
 };
 
 export type ChatMessage = {
-  role: 'user';
+  role: 'user' | 'assistant';
   content: string;
 };
 
@@ -79,4 +79,3 @@ export type ServiceHealthState = {
   status: ServiceStatus;
   message?: string;
 };
-

@@ -26,27 +26,27 @@ export function JobPanel({
   return (
     <section className="panel workspace-panel model-panel">
       <div className="section-header">
-        <h2>3D Job</h2>
-        <span>{job ? job.status : 'No job created'}</span>
+        <h2>轉成 3D</h2>
+        <span>{job ? job.status : '尚未建立 Job'}</span>
       </div>
 
       {selectedImage ? (
         <div className="selected-image">
           <img src={resolveApiUrl(selectedImage.url)} alt="Selected source preview" />
           <div>
-            <span>Selected image_id</span>
+            <span>選定 image_id</span>
             <code>{selectedImage.image_id}</code>
           </div>
         </div>
       ) : (
-        <div className="empty-state compact">Select an image before creating a 3D job.</div>
+        <div className="empty-state compact">請先選擇一張圖片。</div>
       )}
 
       <button type="button" onClick={onCreateJob} disabled={!canCreateJob}>
-        {isCreatingJob ? 'Creating Job...' : 'Create 3D Job'}
+        {isCreatingJob ? 'Creating Job...' : '建立 3D Job'}
       </button>
 
-      {isComfyDisconnected && <p className="hint warning">ComfyUI is disconnected. 3D jobs are disabled.</p>}
+      {isComfyDisconnected && <p className="hint warning">ComfyUI 未連線，暫時無法建立 3D Job。</p>}
       {error && <p className="hint error">{error}</p>}
 
       {job && (
@@ -69,10 +69,9 @@ export function JobPanel({
 
       {modelUrl && (
         <a className="download-link" href={modelUrl} download>
-          Download GLB
+          下載 GLB
         </a>
       )}
     </section>
   );
 }
-

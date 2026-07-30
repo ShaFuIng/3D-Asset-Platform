@@ -13,10 +13,10 @@ const frontendStatus: ServiceHealthState = {
 
 export function ServiceStatusPanel({ backend, openai, comfy }: ServiceStatusPanelProps) {
   return (
-    <section className="panel">
-      <div>
-        <p className="eyebrow">Generation Workspace</p>
-        <h1>Generative AI Editable 3D Asset Platform</h1>
+    <header className="app-header">
+      <div className="brand-block">
+        <p className="eyebrow">GPT Image to Hunyuan3D</p>
+        <h1>聊天配 3D 生成工具</h1>
       </div>
 
       <div className="status-grid">
@@ -25,7 +25,7 @@ export function ServiceStatusPanel({ backend, openai, comfy }: ServiceStatusPane
         <StatusRow label="OpenAI" state={openai} />
         <StatusRow label="ComfyUI" state={comfy} />
       </div>
-    </section>
+    </header>
   );
 }
 
@@ -38,4 +38,3 @@ function StatusRow({ label, state }: { label: string; state: ServiceHealthState 
     </div>
   );
 }
-
