@@ -6,7 +6,7 @@ const { URL } = require('url');
 
 const ROOT = __dirname;
 const GENERATED = path.join(ROOT, 'generated');
-const COMFY_URL = 'http://127.0.0.1:8000';
+const COMFY_URL = 'http://127.0.0.1:8188';
 fs.mkdirSync(GENERATED, { recursive: true });
 
 const envPath = path.join(ROOT, '.env');
