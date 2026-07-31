@@ -76,6 +76,23 @@ def test_generate_image_success(client: TestClient) -> None:
     assert data["filename"].startswith("gpt-")
     assert data["assistant_message"] == "已依照你的需求生成圖片。"
     assert data["image_prompt"] == "A revised prompt."
+    assert data["response_id"] == "response-123"
+
+
+def test_generate_image_forwards_previous_response_id(client: TestClient) -> None:
+    fake_openai_client = FakeOpenAIClient()
+    client.app.state.openai_client = fake_openai_client
+
+    response = client.post(
+        "/api/images/generate",
+        json={
+            "messages": [{"role": "user", "content": "Remove the background."}],
+            "previous_response_id": "response-previous",
+        },
+    )
+
+    assert response.status_code == 201
+    assert fake_openai_client.previous_response_id == "response-previous"
 
 
 def test_generate_image_without_openai_key_returns_503(client: TestClient) -> None:

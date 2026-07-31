@@ -1,78 +1,69 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { ModelViewer } from './components/ModelViewer';
+import {
+  ApiClientError,
+  getBackendHealth,
+  getComfyHealth,
+  getOpenAIHealth,
+} from './api/client';
+import { ServiceStatusPanel } from './components/ServiceStatusPanel';
+import { SingleImageWorkspace } from './pages/SingleImageWorkspace';
+import { ThreeViewPage } from './pages/ThreeViewPage';
+import type { ServiceHealthState } from './types/api';
 
-type ServiceStatus = 'checking' | 'connected' | 'disconnected';
+const checkingState: ServiceHealthState = { status: 'checking' };
 
-type HealthState = {
-  status: ServiceStatus;
-  message?: string;
-};
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
-const sampleGlbUrl: string | undefined = undefined;
-
-async function fetchHealth(path: string): Promise<HealthState> {
-  try {
-    const response = await fetch(`${apiBaseUrl}${path}`);
-    const data = await response.json();
-
-    if (!response.ok) {
-      return { status: 'disconnected', message: data.detail ?? response.statusText };
-    }
-
-    return {
-      status: data.status === 'connected' ? 'connected' : 'disconnected',
-      message: data.message,
-    };
-  } catch (error) {
-    return {
-      status: 'disconnected',
-      message: error instanceof Error ? error.message : 'Unknown connection error',
-    };
+function getErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return '';
   }
-}
-
-function StatusRow({ label, state }: { label: string; state: HealthState }) {
-  return (
-    <div className="status-row">
-      <span>{label}</span>
-      <strong data-status={state.status}>{state.status}</strong>
-      {state.message && <small>{state.message}</small>}
-    </div>
-  );
+  if (error instanceof ApiClientError || error instanceof Error) {
+    return error.message;
+  }
+  return '發生未知錯誤。';
 }
 
 export default function App() {
-  const [backend, setBackend] = useState<HealthState>({ status: 'checking' });
-  const [comfy, setComfy] = useState<HealthState>({ status: 'checking' });
+  const [backend, setBackend] = useState<ServiceHealthState>(checkingState);
+  const [openai, setOpenai] = useState<ServiceHealthState>(checkingState);
+  const [comfy, setComfy] = useState<ServiceHealthState>(checkingState);
 
   useEffect(() => {
-    void fetchHealth('/api/health').then(setBackend);
-    void fetchHealth('/api/comfy/health').then(setComfy);
+    const controller = new AbortController();
+
+    void getBackendHealth(controller.signal)
+      .then((data) => setBackend({ status: data.status, message: data.message }))
+      .catch((error) => {
+        const message = getErrorMessage(error);
+        if (message) setBackend({ status: 'disconnected', message });
+      });
+
+    void getOpenAIHealth(controller.signal)
+      .then((data) => setOpenai({ status: data.status, message: data.message }))
+      .catch((error) => {
+        const message = getErrorMessage(error);
+        if (message) setOpenai({ status: 'disconnected', message });
+      });
+
+    void getComfyHealth(controller.signal)
+      .then((data) => setComfy({ status: data.status, message: data.message }))
+      .catch((error) => {
+        const message = getErrorMessage(error);
+        if (message) setComfy({ status: 'disconnected', message });
+      });
+
+    return () => controller.abort();
   }, []);
 
   return (
     <main className="app">
-      <section className="panel">
-        <div>
-          <p className="eyebrow">Phase 1 Environment Check</p>
-          <h1>Generative AI Editable 3D Asset Platform</h1>
-        </div>
+      <ServiceStatusPanel backend={backend} openai={openai} comfy={comfy} />
 
-        <div className="status-grid">
-          <StatusRow label="Frontend" state={{ status: 'connected', message: 'Vite is running.' }} />
-          <StatusRow label="Backend" state={backend} />
-          <StatusRow label="ComfyUI" state={comfy} />
-        </div>
-      </section>
-
-      <section className="preview-area">
-        <div className="preview-header">
-          <h2>GLB Preview</h2>
-          <span>{sampleGlbUrl ?? 'No model selected'}</span>
-        </div>
-        <ModelViewer src={sampleGlbUrl} />
-      </section>
+      <Routes>
+        <Route path="/" element={<SingleImageWorkspace openai={openai} comfy={comfy} />} />
+        <Route path="/three-view" element={<ThreeViewPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </main>
   );
 }
