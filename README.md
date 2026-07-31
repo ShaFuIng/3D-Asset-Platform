@@ -30,3 +30,8 @@
 
 修改程式前，請先查看負責範圍對應的最新開發紀錄，以及根目錄的
 [`AGENTS.md`](./AGENTS.md)。
+
+## 授權
+
+本專案採用 [GNU General Public License v3.0](./LICENSE) 授權。
+第三方來源與修改說明請見 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
