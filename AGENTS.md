@@ -7,8 +7,7 @@
 - 程式碼名稱和註解使用 English。
 - 採用 minimal diff。
 - 不做不必要的 refactor。
-- 不修改 `prototype-reference`。
+- `prototype-reference` 預設為唯讀參考；除非使用者明確要求修正參考原型本身，否則不得修改。
 - 不 commit 或 push，除非使用者明確要求。
 - 前端不可直接存放 API Key。
 - ComfyUI 必須由 FastAPI 後端呼叫。
-
