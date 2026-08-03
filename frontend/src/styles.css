@@ -708,13 +708,9 @@ code {
 
 .lightbox-body {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr);
+  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
   gap: 20px;
   padding-right: 40px;
-}
-
-.lightbox-body.with-three-view {
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.3fr);
 }
 
 .lightbox-image-pane {
@@ -731,14 +727,26 @@ code {
   object-fit: contain;
 }
 
-.lightbox-three-view-pane {
+.lightbox-views-pane {
   display: grid;
   gap: 16px;
   align-content: start;
 }
 
+/* Only 2 slots (side/back): the original image already counts as the front
+   view, so this grid mirrors .three-view-grid but with 2 columns instead of 3. */
+.lightbox-view-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lightbox-view-grid .view-slot {
+  gap: 10px;
+}
+
 @media (max-width: 1180px) {
-  .lightbox-body.with-three-view {
+  .lightbox-body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -754,5 +762,9 @@ code {
 
   .lightbox-body {
     padding-right: 0;
+  }
+
+  .lightbox-view-grid {
+    grid-template-columns: 1fr;
   }
 }

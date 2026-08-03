@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { resolveApiUrl } from '../api/client';
 import type { ImageAsset } from '../types/api';
-import { ImageLightbox } from './ImageLightbox';
+import {
+  DEFAULT_VIEW_GENERATION_STATE,
+  ImageLightbox,
+  type ViewGenerationState,
+  type ViewSlotId,
+} from './ImageLightbox';
 
 type ImageGalleryProps = {
   images: ImageAsset[];
@@ -9,10 +14,34 @@ type ImageGalleryProps = {
   onSelect: (image: ImageAsset) => void;
 };
 
+// Fake delay so the "generating" state is visible in the UI. No real API call here.
+const FAKE_VIEW_GENERATION_DELAY_MS = 1500;
+
 export function ImageGallery({ images, selectedImageId, onSelect }: ImageGalleryProps) {
-  // Lightbox open/close state lives here since this is where the trigger lives;
-  // the lightbox's own generation UI/state is self-contained in ImageLightbox.
+  // Lightbox open/close state lives here since this is where the trigger lives.
   const [lightboxImage, setLightboxImage] = useState<ImageAsset>();
+
+  // Keyed by image_id and lifted above ImageLightbox (which unmounts on close)
+  // so a previously generated side/back view survives closing and reopening
+  // the lightbox for the same image.
+  const [viewStatesByImageId, setViewStatesByImageId] = useState<Record<string, ViewGenerationState>>({});
+
+  function handleGenerateSlot(imageId: string, slotId: ViewSlotId) {
+    setViewStatesByImageId((current) => {
+      const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
+      if (imageState[slotId] === 'generating') {
+        return current;
+      }
+      return { ...current, [imageId]: { ...imageState, [slotId]: 'generating' } };
+    });
+
+    window.setTimeout(() => {
+      setViewStatesByImageId((current) => {
+        const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
+        return { ...current, [imageId]: { ...imageState, [slotId]: 'done' } };
+      });
+    }, FAKE_VIEW_GENERATION_DELAY_MS);
+  }
 
   return (
     <section className="panel workspace-panel">
@@ -49,6 +78,8 @@ export function ImageGallery({ images, selectedImageId, onSelect }: ImageGallery
         <ImageLightbox
           key={lightboxImage.image_id}
           image={lightboxImage}
+          viewState={viewStatesByImageId[lightboxImage.image_id] ?? DEFAULT_VIEW_GENERATION_STATE}
+          onGenerateSlot={(slotId) => handleGenerateSlot(lightboxImage.image_id, slotId)}
           onClose={() => setLightboxImage(undefined)}
         />
       )}
