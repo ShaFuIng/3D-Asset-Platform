@@ -7,41 +7,34 @@ import {
   type ViewGenerationState,
   type ViewSlotId,
 } from './ImageLightbox';
+import type { JobEntry } from './JobPanel';
 
 type ImageGalleryProps = {
   images: ImageAsset[];
   selectedImageId?: string;
   onSelect: (image: ImageAsset) => void;
+  // View-generation and job state are owned by SingleImageWorkspace (job
+  // creation is triggered here but displayed in JobPanel); this component
+  // just resolves the entry for whichever image's lightbox is open.
+  viewStatesByImageId: Record<string, ViewGenerationState>;
+  onGenerateSlot: (imageId: string, slotId: ViewSlotId) => void;
+  jobsByImageId: Record<string, JobEntry>;
+  isComfyDisconnected: boolean;
+  onCreateJob: (imageId: string) => void;
 };
 
-// Fake delay so the "generating" state is visible in the UI. No real API call here.
-const FAKE_VIEW_GENERATION_DELAY_MS = 1500;
-
-export function ImageGallery({ images, selectedImageId, onSelect }: ImageGalleryProps) {
+export function ImageGallery({
+  images,
+  selectedImageId,
+  onSelect,
+  viewStatesByImageId,
+  onGenerateSlot,
+  jobsByImageId,
+  isComfyDisconnected,
+  onCreateJob,
+}: ImageGalleryProps) {
   // Lightbox open/close state lives here since this is where the trigger lives.
   const [lightboxImage, setLightboxImage] = useState<ImageAsset>();
-
-  // Keyed by image_id and lifted above ImageLightbox (which unmounts on close)
-  // so a previously generated side/back view survives closing and reopening
-  // the lightbox for the same image.
-  const [viewStatesByImageId, setViewStatesByImageId] = useState<Record<string, ViewGenerationState>>({});
-
-  function handleGenerateSlot(imageId: string, slotId: ViewSlotId) {
-    setViewStatesByImageId((current) => {
-      const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
-      if (imageState[slotId] === 'generating') {
-        return current;
-      }
-      return { ...current, [imageId]: { ...imageState, [slotId]: 'generating' } };
-    });
-
-    window.setTimeout(() => {
-      setViewStatesByImageId((current) => {
-        const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
-        return { ...current, [imageId]: { ...imageState, [slotId]: 'done' } };
-      });
-    }, FAKE_VIEW_GENERATION_DELAY_MS);
-  }
 
   return (
     <section className="panel workspace-panel">
@@ -79,7 +72,10 @@ export function ImageGallery({ images, selectedImageId, onSelect }: ImageGallery
           key={lightboxImage.image_id}
           image={lightboxImage}
           viewState={viewStatesByImageId[lightboxImage.image_id] ?? DEFAULT_VIEW_GENERATION_STATE}
-          onGenerateSlot={(slotId) => handleGenerateSlot(lightboxImage.image_id, slotId)}
+          onGenerateSlot={(slotId) => onGenerateSlot(lightboxImage.image_id, slotId)}
+          jobEntry={jobsByImageId[lightboxImage.image_id]}
+          isComfyDisconnected={isComfyDisconnected}
+          onCreateJob={onCreateJob}
           onClose={() => setLightboxImage(undefined)}
         />
       )}

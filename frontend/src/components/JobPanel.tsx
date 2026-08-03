@@ -1,33 +1,34 @@
 import { resolveApiUrl } from '../api/client';
 import type { ImageAsset, JobResponse } from '../types/api';
+import type { ViewGenerationState } from './ImageLightbox';
 import { ModelViewer } from './ModelViewer';
 
-type JobPanelProps = {
-  selectedImage?: ImageAsset;
+// Job creation is triggered from ImageLightbox (see create3DJob call there),
+// so this is shared state read by both. Owned by SingleImageWorkspace.
+export type JobEntry = {
   job?: JobResponse;
   modelUrl?: string;
   isCreatingJob: boolean;
-  isComfyDisconnected: boolean;
   error?: string;
-  onCreateJob: () => void;
 };
 
-export function JobPanel({
-  selectedImage,
-  job,
-  modelUrl,
-  isCreatingJob,
-  isComfyDisconnected,
-  error,
-  onCreateJob,
-}: JobPanelProps) {
-  const canCreateJob = Boolean(selectedImage) && !isCreatingJob && !isComfyDisconnected;
+type JobPanelProps = {
+  selectedImage?: ImageAsset;
+  viewState?: ViewGenerationState;
+  jobEntry?: JobEntry;
+};
+
+export function JobPanel({ selectedImage, viewState, jobEntry }: JobPanelProps) {
+  const job = jobEntry?.job;
+  const modelUrl = jobEntry?.modelUrl;
+  const hasGeneratedAllViews = viewState?.side === 'done' && viewState?.back === 'done';
+  const statusLabel = job ? job.status : jobEntry?.isCreatingJob ? '建立中...' : '尚未建立 Job';
 
   return (
     <section className="panel workspace-panel model-panel">
       <div className="section-header">
         <h2>3D 工作區</h2>
-        <span>{job ? job.status : '尚未建立 Job'}</span>
+        <span>{statusLabel}</span>
       </div>
 
       {selectedImage ? (
@@ -42,12 +43,11 @@ export function JobPanel({
         <div className="empty-state compact">請先選擇一張圖片。</div>
       )}
 
-      <button type="button" onClick={onCreateJob} disabled={!canCreateJob}>
-        {isCreatingJob ? 'Creating Job...' : '建立 3D Job'}
-      </button>
+      {selectedImage && (
+        <p className="hint">{hasGeneratedAllViews ? '已生成三視圖。' : '尚未生成三視圖。'}</p>
+      )}
 
-      {isComfyDisconnected && <p className="hint warning">ComfyUI 未連線，因此無法建立 3D Job。</p>}
-      {error && <p className="hint error">{error}</p>}
+      {jobEntry?.error && <p className="hint error">{jobEntry.error}</p>}
 
       {job && (
         <div className="job-details">

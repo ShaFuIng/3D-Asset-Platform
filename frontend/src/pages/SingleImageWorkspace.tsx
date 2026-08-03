@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ApiClientError,
   create3DJob,
@@ -9,8 +9,13 @@ import {
 } from '../api/client';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { ImageGallery } from '../components/ImageGallery';
-import { JobPanel } from '../components/JobPanel';
-import type { ChatMessage, ImageAsset, JobResponse, ServiceHealthState } from '../types/api';
+import {
+  DEFAULT_VIEW_GENERATION_STATE,
+  type ViewGenerationState,
+  type ViewSlotId,
+} from '../components/ImageLightbox';
+import { JobPanel, type JobEntry } from '../components/JobPanel';
+import type { ChatMessage, ImageAsset, ServiceHealthState } from '../types/api';
 import {
   createMessageId,
   formatMessageTime,
@@ -21,6 +26,11 @@ type SingleImageWorkspaceProps = {
   openai: ServiceHealthState;
   comfy: ServiceHealthState;
 };
+
+const DEFAULT_JOB_ENTRY: JobEntry = { isCreatingJob: false };
+
+// Fake delay so the "generating" state is visible in the UI. No real API call here.
+const FAKE_VIEW_GENERATION_DELAY_MS = 1500;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === 'AbortError') {
@@ -66,9 +76,14 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
   const [errorMessage, setErrorMessage] = useState<string>();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [isCreatingJob, setIsCreatingJob] = useState(false);
-  const [job, setJob] = useState<JobResponse>();
-  const [modelUrl, setModelUrl] = useState<string>();
+
+  // Keyed by image_id so a previously generated side/back view, and any 3D
+  // job created from ImageLightbox, survive switching the gallery selection
+  // or closing/reopening the lightbox — see ImageGallery.tsx / ImageLightbox.tsx.
+  // JobPanel reads jobsByImageId too, so job creation (triggered in the
+  // lightbox) and job display (JobPanel) always agree.
+  const [viewStatesByImageId, setViewStatesByImageId] = useState<Record<string, ViewGenerationState>>({});
+  const [jobsByImageId, setJobsByImageId] = useState<Record<string, JobEntry>>({});
 
   const selectedImage = useMemo(
     () => images.find((image) => image.image_id === selectedImageId),
@@ -82,40 +97,70 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
       ? '正在檢查 OpenAI 設定。'
       : 'OpenAI API key 尚未設定，因此不能使用 Prompt 生成圖片。';
 
+  function updateJobEntry(imageId: string, updater: (entry: JobEntry) => JobEntry) {
+    setJobsByImageId((current) => ({
+      ...current,
+      [imageId]: updater(current[imageId] ?? DEFAULT_JOB_ENTRY),
+    }));
+  }
+
+  // Derived summary of which jobs are still queued/running, and their
+  // job_id/status. Mirrors the previous single-job polling effect's
+  // [job?.job_id, job?.status] dependency, generalized to multiple
+  // concurrent jobs (one per image_id a job was created from).
+  const pendingJobsKey = Object.entries(jobsByImageId)
+    .filter(([, entry]) => entry.job && (entry.job.status === 'queued' || entry.job.status === 'running'))
+    .map(([imageId, entry]) => `${imageId}:${entry.job!.job_id}:${entry.job!.status}`)
+    .join('|');
+
   useEffect(() => {
-    if (!job || !['queued', 'running'].includes(job.status)) {
+    const pendingImageIds = Object.entries(jobsByImageId)
+      .filter(([, entry]) => entry.job && (entry.job.status === 'queued' || entry.job.status === 'running'))
+      .map(([imageId]) => imageId);
+
+    if (pendingImageIds.length === 0) {
       return;
     }
 
     const controller = new AbortController();
     let isActive = true;
+    // Real (non-abort) polling errors stop that one image's polling, same as
+    // the previous single-job effect did, without touching other pending jobs.
+    const stillPolling = new Set(pendingImageIds);
+
     const timerId = window.setInterval(() => {
-      void get3DJob(job.job_id, controller.signal)
-        .then((nextJob) => {
-          if (!isActive) {
-            return;
-          }
-          setJob(nextJob);
-          if (nextJob.status === 'succeeded' && nextJob.result?.model_url) {
-            setModelUrl(resolveApiUrl(nextJob.result.model_url));
-            setActivityMessage('3D 模型已完成。');
-          }
-          if (nextJob.status === 'failed') {
-            setActivityMessage(undefined);
-            setErrorMessage(nextJob.message);
-          }
-        })
-        .catch((error) => {
-          if (!isActive) {
-            return;
-          }
-          const message = getErrorMessage(error);
-          if (message) {
-            setErrorMessage(message);
-            setActivityMessage(undefined);
-            window.clearInterval(timerId);
-          }
-        });
+      stillPolling.forEach((imageId) => {
+        const jobId = jobsByImageId[imageId]?.job?.job_id;
+        if (!jobId) {
+          return;
+        }
+        void get3DJob(jobId, controller.signal)
+          .then((nextJob) => {
+            if (!isActive) {
+              return;
+            }
+            updateJobEntry(imageId, (entry) => {
+              const next: JobEntry = { ...entry, job: nextJob };
+              if (nextJob.status === 'succeeded' && nextJob.result?.model_url) {
+                next.modelUrl = resolveApiUrl(nextJob.result.model_url);
+              }
+              if (nextJob.status === 'failed') {
+                next.error = nextJob.message;
+              }
+              return next;
+            });
+          })
+          .catch((error) => {
+            if (!isActive) {
+              return;
+            }
+            const message = getErrorMessage(error);
+            if (message) {
+              stillPolling.delete(imageId);
+              updateJobEntry(imageId, (entry) => ({ ...entry, error: message }));
+            }
+          });
+      });
     }, 2000);
 
     return () => {
@@ -123,19 +168,53 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
       controller.abort();
       window.clearInterval(timerId);
     };
-  }, [job?.job_id, job?.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingJobsKey]);
 
-  const resetJobState = useCallback(() => {
-    setJob(undefined);
-    setModelUrl(undefined);
-    setErrorMessage(undefined);
-    setActivityMessage(undefined);
-  }, []);
+  function handleGenerateSlot(imageId: string, slotId: ViewSlotId) {
+    setViewStatesByImageId((current) => {
+      const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
+      if (imageState[slotId] === 'generating') {
+        return current;
+      }
+      return { ...current, [imageId]: { ...imageState, [slotId]: 'generating' } };
+    });
+
+    window.setTimeout(() => {
+      setViewStatesByImageId((current) => {
+        const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
+        return { ...current, [imageId]: { ...imageState, [slotId]: 'done' } };
+      });
+    }, FAKE_VIEW_GENERATION_DELAY_MS);
+  }
+
+  async function handleCreateJobForImage(imageId: string) {
+    if (isComfyDisconnected || jobsByImageId[imageId]?.isCreatingJob) {
+      return;
+    }
+
+    updateJobEntry(imageId, () => ({ isCreatingJob: true }));
+
+    try {
+      const created = await create3DJob(imageId);
+      updateJobEntry(imageId, () => ({
+        isCreatingJob: false,
+        job: {
+          job_id: created.job_id,
+          status: created.status,
+          message: '3D generation job is queued.',
+          prompt_id: null,
+          result: null,
+        },
+      }));
+    } catch (error) {
+      updateJobEntry(imageId, () => ({ isCreatingJob: false, error: getErrorMessage(error) }));
+    }
+  }
 
   function addAndSelectImage(image: ImageAsset) {
     setImages((current) => [image, ...current]);
     setSelectedImageId(image.image_id);
-    resetJobState();
   }
 
   async function handleGenerateImage() {
@@ -200,37 +279,8 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
     }
   }
 
-  async function handleCreateJob() {
-    if (!selectedImage || isComfyDisconnected || isCreatingJob) {
-      return;
-    }
-
-    setIsCreatingJob(true);
-    setErrorMessage(undefined);
-    setModelUrl(undefined);
-    setActivityMessage('正在建立 3D Job...');
-    setJob(undefined);
-    try {
-      const created = await create3DJob(selectedImage.image_id);
-      setJob({
-        job_id: created.job_id,
-        status: created.status,
-        message: '3D generation job is queued.',
-        prompt_id: null,
-        result: null,
-      });
-      setActivityMessage('3D Job 已建立，正在等待後端處理。');
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-      setActivityMessage(undefined);
-    } finally {
-      setIsCreatingJob(false);
-    }
-  }
-
   function handleSelectImage(image: ImageAsset) {
     setSelectedImageId(image.image_id);
-    resetJobState();
   }
 
   return (
@@ -249,16 +299,21 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
         onUpload={handleUploadImage}
       />
 
-      <ImageGallery images={images} selectedImageId={selectedImageId} onSelect={handleSelectImage} />
+      <ImageGallery
+        images={images}
+        selectedImageId={selectedImageId}
+        onSelect={handleSelectImage}
+        viewStatesByImageId={viewStatesByImageId}
+        onGenerateSlot={handleGenerateSlot}
+        jobsByImageId={jobsByImageId}
+        isComfyDisconnected={isComfyDisconnected}
+        onCreateJob={handleCreateJobForImage}
+      />
 
       <JobPanel
         selectedImage={selectedImage}
-        job={job}
-        modelUrl={modelUrl}
-        isCreatingJob={isCreatingJob}
-        isComfyDisconnected={isComfyDisconnected}
-        error={errorMessage}
-        onCreateJob={handleCreateJob}
+        viewState={selectedImage ? viewStatesByImageId[selectedImage.image_id] : undefined}
+        jobEntry={selectedImage ? jobsByImageId[selectedImage.image_id] : undefined}
       />
     </section>
   );

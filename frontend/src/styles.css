@@ -745,6 +745,52 @@ code {
   gap: 10px;
 }
 
+/* Selectable view (front image, or a generated side/back placeholder) used to
+   pick which image_id create3DJob is called with. Resets button chrome so the
+   selection ring below is the only visual change, not a blue button surface. */
+.lightbox-view-option {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+  padding: 6px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: inherit;
+  font-weight: inherit;
+}
+
+.lightbox-view-option[data-selected='true'] {
+  border-color: #6d9fc4;
+  box-shadow: 0 0 0 2px rgba(109, 159, 196, 0.24);
+}
+
+.lightbox-view-select-badge {
+  color: #507fa8;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.lightbox-view-option[data-selected='true'] .lightbox-view-select-badge {
+  color: #245e91;
+}
+
+.lightbox-create-job-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 20px;
+  padding-right: 40px;
+  border-top: 1px solid #e3e8e5;
+}
+
+.lightbox-create-job-button {
+  min-height: 56px;
+  font-size: 1rem;
+}
+
 @media (max-width: 1180px) {
   .lightbox-body {
     grid-template-columns: minmax(0, 1fr);
@@ -766,5 +812,9 @@ code {
 
   .lightbox-view-grid {
     grid-template-columns: 1fr;
+  }
+
+  .lightbox-create-job-row {
+    padding-right: 0;
   }
 }
