@@ -9,6 +9,11 @@ import type {
   OpenAIHealthResponse,
   UploadImageResponse,
 } from '../types/api';
+// Dev-only mock mode switch. See frontend/src/mocks/config.ts for how to
+// enable it and tune its behavior; disabled by default so real API calls
+// are unaffected.
+import { isMockModeEnabled } from '../mocks/config';
+import * as mockClient from '../mocks/mockClient';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
@@ -23,7 +28,10 @@ export class ApiClientError extends Error {
 }
 
 export function resolveApiUrl(pathOrUrl: string): string {
-  if (/^https?:\/\//i.test(pathOrUrl)) {
+  // Any URL that already has a scheme (http:, https:, data:, blob:, ...) is
+  // absolute already. The data:/blob: cases are needed for mock mode, which
+  // returns in-memory image/model URLs instead of backend paths.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(pathOrUrl)) {
     return pathOrUrl;
   }
 
@@ -33,14 +41,17 @@ export function resolveApiUrl(pathOrUrl: string): string {
 }
 
 export async function getBackendHealth(signal?: AbortSignal): Promise<BackendHealthResponse> {
+  if (isMockModeEnabled) return mockClient.mockGetBackendHealth(signal);
   return requestJson('/api/health', { signal });
 }
 
 export async function getOpenAIHealth(signal?: AbortSignal): Promise<OpenAIHealthResponse> {
+  if (isMockModeEnabled) return mockClient.mockGetOpenAIHealth(signal);
   return requestJson('/api/openai/health', { signal });
 }
 
 export async function getComfyHealth(signal?: AbortSignal): Promise<ComfyHealthResponse> {
+  if (isMockModeEnabled) return mockClient.mockGetComfyHealth(signal);
   return requestJson('/api/comfy/health', { signal });
 }
 
@@ -49,6 +60,7 @@ export async function generateImage(
   previousResponseId?: string,
   signal?: AbortSignal,
 ): Promise<GenerateImageResponse> {
+  if (isMockModeEnabled) return mockClient.mockGenerateImage(messages, previousResponseId, signal);
   return requestJson('/api/images/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -61,6 +73,7 @@ export async function generateImage(
 }
 
 export async function uploadImage(file: File, signal?: AbortSignal): Promise<UploadImageResponse> {
+  if (isMockModeEnabled) return mockClient.mockUploadImage(file, signal);
   const form = new FormData();
   form.append('image', file);
   return requestJson('/api/images/upload', {
@@ -74,6 +87,7 @@ export async function create3DJob(
   imageId: string,
   signal?: AbortSignal,
 ): Promise<Create3DJobResponse> {
+  if (isMockModeEnabled) return mockClient.mockCreate3DJob(imageId, signal);
   return requestJson('/api/3d/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -83,6 +97,7 @@ export async function create3DJob(
 }
 
 export async function get3DJob(jobId: string, signal?: AbortSignal): Promise<JobResponse> {
+  if (isMockModeEnabled) return mockClient.mockGet3DJob(jobId, signal);
   return requestJson(`/api/3d/jobs/${jobId}`, { signal });
 }
 
