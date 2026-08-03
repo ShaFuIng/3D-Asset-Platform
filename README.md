@@ -11,6 +11,7 @@
 - Vite + React + TypeScript 前端與對話式工作區
 - OpenAI 對話式圖片生成與多輪圖片修改
 - 本機圖片上傳、圖片選擇與生成圖庫
+- 圖片放大檢視、Side／Back 視圖生成狀態記憶，並改由此處建立 3D Job
 - FastAPI 圖片與 3D 生成 API
 - ComfyUI Hunyuan3D Workflow 提交與 Job 狀態輪詢
 - GLB 儲存、下載與前端載入
