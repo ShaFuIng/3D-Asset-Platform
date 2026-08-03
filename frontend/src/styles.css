@@ -308,11 +308,13 @@ code {
 }
 
 .image-card {
+  position: relative;
   display: grid;
   gap: 8px;
   min-height: 0;
   padding: 8px;
-  border-color: #d3dce1;
+  border: 1px solid #d3dce1;
+  border-radius: 6px;
   background: #ffffff;
   color: #1f2937;
   text-align: left;
@@ -321,6 +323,21 @@ code {
 .image-card[data-selected='true'] {
   border-color: #6d9fc4;
   box-shadow: 0 0 0 2px rgba(109, 159, 196, 0.24);
+}
+
+/* Fills the card and keeps the existing "click to select" behavior; resets
+   default button chrome so .image-card's own background/border stays visible. */
+.image-card-select {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: inherit;
+  font-weight: inherit;
 }
 
 .image-card img,
@@ -336,6 +353,26 @@ code {
   color: #507fa8;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* Overlaid icon button that opens the ImageLightbox; separate control from
+   .image-card-select so it doesn't interfere with the existing select click. */
+.image-zoom-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: grid;
+  min-height: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(24, 29, 32, 0.82);
+  color: #ffffff;
+  font-size: 0.85rem;
+  place-items: center;
 }
 
 .selected-image {
@@ -630,5 +667,92 @@ code {
   .viewer-toolbar label,
   .viewer-toolbar select {
     width: 100%;
+  }
+}
+
+/* ===== ImageLightbox (frontend/src/components/ImageLightbox.tsx) ===== */
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 29, 32, 0.72);
+}
+
+.lightbox-content {
+  position: relative;
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 20px;
+  border: 1px solid #d3dce1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  place-items: center;
+}
+
+.lightbox-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr);
+  gap: 20px;
+  padding-right: 40px;
+}
+
+.lightbox-body.with-three-view {
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.3fr);
+}
+
+.lightbox-image-pane {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.lightbox-image-pane img {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 8px;
+  background: #eef3f1;
+  object-fit: contain;
+}
+
+.lightbox-three-view-pane {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+@media (max-width: 1180px) {
+  .lightbox-body.with-three-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .lightbox-overlay {
+    padding: 12px;
+  }
+
+  .lightbox-content {
+    padding: 16px;
+  }
+
+  .lightbox-body {
+    padding-right: 0;
   }
 }
