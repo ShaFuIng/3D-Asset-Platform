@@ -51,7 +51,11 @@ export function ImageGallery({
       {lightboxImage && (
         <ImageLightbox
           key={lightboxImage.image_id}
-          image={lightboxImage}
+          image={{
+            url: lightboxImage.url,
+            imageId: lightboxImage.image_id,
+            filename: lightboxImage.filename,
+          }}
           onClose={() => setLightboxImage(undefined)}
         />
       )}

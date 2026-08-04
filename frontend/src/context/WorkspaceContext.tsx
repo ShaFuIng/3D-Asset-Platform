@@ -13,10 +13,10 @@ import {
   resolveApiUrl,
   uploadImage as requestUploadImage,
 } from '../api/client';
-import type { JobEntry } from '../components/JobPanel';
 import type {
   ChatMessage,
   ImageAsset,
+  JobResponse,
   JobStatus,
   MultiviewJobResponse,
   MultiviewModelJobResponse,
@@ -30,7 +30,21 @@ import {
 
 export type Pipeline = 'single' | 'multiview';
 
+// Per-image single-view job state. Defined here (not in a presentational
+// component) because the provider owns it.
+export type JobEntry = {
+  job?: JobResponse;
+  modelUrl?: string;
+  isCreatingJob: boolean;
+  error?: string;
+};
+
 export type MultiviewModelKind = 'geometry' | 'textured';
+
+// Tracks user-triggered per-view actions currently in flight, so view cards
+// can show their own loading state. The ref-based locks stay the real
+// concurrency guard; this field is display-only.
+export type PendingViewActions = Partial<Record<MultiviewName, 'accept'>>;
 
 export type MultiviewWorkspace = {
   job: MultiviewJobResponse | null;
@@ -39,6 +53,7 @@ export type MultiviewWorkspace = {
   isStarting: boolean;
   isStartingModel: boolean;
   error: string | null;
+  pendingViewActions: PendingViewActions;
 };
 
 const EMPTY_MULTIVIEW_WORKSPACE: MultiviewWorkspace = {
@@ -48,6 +63,7 @@ const EMPTY_MULTIVIEW_WORKSPACE: MultiviewWorkspace = {
   isStarting: false,
   isStartingModel: false,
   error: null,
+  pendingViewActions: {},
 };
 
 const DEFAULT_JOB_ENTRY: JobEntry = { isCreatingJob: false };
@@ -109,17 +125,22 @@ export type WorkspaceContextValue = {
   pipelineByImageId: Record<string, Pipeline>;
   setPipeline: (imageId: string, pipeline: Pipeline) => void;
 
-  // Single-view pipeline: one active job entry per image.
+  // Single-view pipeline: one active job entry per image. Resolves to the
+  // created job_id so callers can navigate to the job route.
   singleJobsByImageId: Record<string, JobEntry>;
-  createSingleJob: (imageId: string) => Promise<void>;
+  createSingleJob: (imageId: string) => Promise<string | undefined>;
 
   // Multiview pipeline: one isolated workspace per image.
   multiviewByImageId: Record<string, MultiviewWorkspace>;
   startMultiview: (imageId: string) => Promise<void>;
   acceptView: (imageId: string, view: MultiviewName) => Promise<void>;
   regenerateView: (imageId: string, view: MultiviewName) => Promise<void>;
-  startModelJob: (imageId: string) => Promise<void>;
+  startModelJob: (imageId: string) => Promise<boolean>;
   setMultiviewModelKind: (imageId: string, kind: MultiviewModelKind) => void;
+
+  // User-triggered one-shot status refresh. Complements polling (which stops
+  // for an image after a real error); never creates or alters jobs.
+  refreshJobStatus: (pipeline: Pipeline, jobId: string) => Promise<void>;
 
   // Reserved for the Phase 2 refresh warning; intentionally unused in Phase 1.
   hasActiveJobs: boolean;
@@ -200,6 +221,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         return current;
       }
       return { ...current, [imageId]: updater(workspace) };
+    });
+  }
+
+  // Display-only per-view pending flag (the real concurrency guard is the
+  // view action lock above).
+  function setViewActionPending(imageId: string, view: MultiviewName, pending: boolean) {
+    updateMultiviewEntry(imageId, (workspace) => {
+      const next: PendingViewActions = { ...workspace.pendingViewActions };
+      if (pending) {
+        next[view] = 'accept';
+      } else {
+        delete next[view];
+      }
+      return { ...workspace, pendingViewActions: next };
     });
   }
 
@@ -471,10 +506,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setPipelineByImageId((current) => ({ ...current, [imageId]: pipeline }));
   }
 
-  async function createSingleJob(imageId: string) {
+  async function createSingleJob(imageId: string): Promise<string | undefined> {
     const lock = singleCreateLockRef.current;
     if (singleJobsByImageId[imageId]?.isCreatingJob || lock.has(imageId)) {
-      return;
+      return undefined;
     }
     lock.add(imageId);
 
@@ -492,8 +527,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           result: null,
         },
       }));
+      return created.job_id;
     } catch (error) {
       updateSingleJobEntry(imageId, () => ({ isCreatingJob: false, error: getErrorMessage(error) }));
+      return undefined;
     } finally {
       lock.delete(imageId);
     }
@@ -558,6 +595,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     lock.add(lockKey);
+    setViewActionPending(imageId, view, true);
 
     const expectedJobId = job.jobId;
     updateMultiviewEntry(imageId, (workspace) => ({ ...workspace, error: null }));
@@ -571,6 +609,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }));
     } finally {
       lock.delete(lockKey);
+      setViewActionPending(imageId, view, false);
     }
   }
 
@@ -582,6 +621,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     lock.add(lockKey);
+    setViewActionPending(imageId, view, true);
 
     const expectedJobId = job.jobId;
     updateMultiviewEntry(imageId, (workspace) => ({ ...workspace, error: null }));
@@ -595,18 +635,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }));
     } finally {
       lock.delete(lockKey);
+      setViewActionPending(imageId, view, false);
     }
   }
 
-  async function startModelJob(imageId: string) {
+  async function startModelJob(imageId: string): Promise<boolean> {
     const lock = modelStartLockRef.current;
     if (lock.has(imageId)) {
-      return;
+      return false;
     }
     const existing = multiviewByImageId[imageId];
     const job = existing?.job;
     if (!job || existing?.isStartingModel || isPendingStatus(existing?.modelJob?.status)) {
-      return;
+      return false;
     }
     lock.add(imageId);
 
@@ -619,14 +660,60 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         isStartingModel: false,
         modelJob,
       }));
+      return true;
     } catch (error) {
       updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({
         ...workspace,
         isStartingModel: false,
         error: getErrorMessage(error),
       }));
+      return false;
     } finally {
       lock.delete(imageId);
+    }
+  }
+
+  async function refreshJobStatus(pipeline: Pipeline, jobId: string): Promise<void> {
+    if (pipeline === 'single') {
+      const imageId = Object.keys(singleJobsByImageId).find(
+        (id) => singleJobsByImageId[id]?.job?.job_id === jobId,
+      );
+      if (!imageId) {
+        return;
+      }
+      const nextJob = await get3DJob(jobId);
+      updateSingleJobEntryIfJob(imageId, jobId, (entry) => {
+        const next: JobEntry = { ...entry, job: nextJob };
+        if (nextJob.status === 'succeeded' && nextJob.result?.model_url) {
+          next.modelUrl = resolveApiUrl(nextJob.result.model_url);
+        }
+        if (nextJob.status === 'failed') {
+          next.error = nextJob.message;
+        }
+        return next;
+      });
+      return;
+    }
+
+    const imageId = Object.keys(multiviewByImageId).find(
+      (id) => multiviewByImageId[id]?.job?.jobId === jobId,
+    );
+    if (!imageId) {
+      return;
+    }
+    const nextJob = await getMultiviewJob(jobId);
+    updateMultiviewEntryIfJob(imageId, jobId, (workspace) => ({ ...workspace, job: nextJob }));
+    if (multiviewByImageId[imageId]?.modelJob) {
+      const nextModelJob = await getMultiviewModelJob(jobId);
+      updateMultiviewEntryIfJob(imageId, jobId, (workspace) => ({
+        ...workspace,
+        modelJob: nextModelJob,
+        activeModelKind: nextModelJob.texturedModel.available
+          ? 'textured'
+          : nextModelJob.geometryModel.available
+            ? 'geometry'
+            : workspace.activeModelKind,
+      }));
     }
   }
 
@@ -663,6 +750,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     regenerateView,
     startModelJob,
     setMultiviewModelKind,
+    refreshJobStatus,
     hasActiveJobs,
   };
 

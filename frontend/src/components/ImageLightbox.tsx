@@ -1,9 +1,16 @@
 import { useEffect } from 'react';
 import { resolveApiUrl } from '../api/client';
-import type { ImageAsset } from '../types/api';
+
+// Accepts a plain image descriptor so both gallery assets (ImageAsset) and
+// multiview view images (MultiviewImageRef) can be zoomed.
+export type LightboxImage = {
+  url: string;
+  imageId?: string;
+  filename?: string;
+};
 
 type ImageLightboxProps = {
-  image: ImageAsset;
+  image: LightboxImage;
   onClose: () => void;
 };
 
@@ -37,16 +44,22 @@ export function ImageLightbox({
         <div className="lightbox-body">
           <div className="lightbox-image-pane">
             <img src={resolveApiUrl(image.url)} alt="放大檢視的圖片" />
-            <div className="job-details">
-              <div>
-                <span>image_id</span>
-                <code>{image.image_id}</code>
+            {(image.imageId || image.filename) && (
+              <div className="job-details">
+                {image.imageId && (
+                  <div>
+                    <span>image_id</span>
+                    <code>{image.imageId}</code>
+                  </div>
+                )}
+                {image.filename && (
+                  <div>
+                    <span>filename</span>
+                    <code>{image.filename}</code>
+                  </div>
+                )}
               </div>
-              <div>
-                <span>filename</span>
-                <code>{image.filename}</code>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

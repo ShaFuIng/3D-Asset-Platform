@@ -8,7 +8,13 @@ import {
 } from './api/client';
 import { ServiceStatusPanel } from './components/ServiceStatusPanel';
 import { WorkspaceProvider } from './context/WorkspaceContext';
-import { SingleImageWorkspace } from './pages/SingleImageWorkspace';
+import { GenerateConfirmPage } from './pages/GenerateConfirmPage';
+import { HomePage } from './pages/HomePage';
+import { JobProgressPage } from './pages/JobProgressPage';
+import { ModeSelectPage } from './pages/ModeSelectPage';
+import { MultiviewStagePage } from './pages/MultiviewStagePage';
+import { ReferenceStagePage } from './pages/ReferenceStagePage';
+import { ViewerStagePage } from './pages/ViewerStagePage';
 import type { ServiceHealthState } from './types/api';
 
 const checkingState: ServiceHealthState = { status: 'checking' };
@@ -61,8 +67,15 @@ export default function App() {
 
       <WorkspaceProvider>
         <Routes>
-          <Route path="/" element={<SingleImageWorkspace openai={openai} comfy={comfy} />} />
-          <Route path="/three-view" element={<Navigate to="/?mode=multiview" replace />} />
+          <Route path="/" element={<HomePage backend={backend} openai={openai} comfy={comfy} />} />
+          <Route path="/reference" element={<ReferenceStagePage openai={openai} />} />
+          <Route path="/mode" element={<ModeSelectPage />} />
+          <Route path="/views" element={<MultiviewStagePage comfy={comfy} />} />
+          <Route path="/views/:imageId" element={<MultiviewStagePage comfy={comfy} />} />
+          <Route path="/generate" element={<GenerateConfirmPage comfy={comfy} />} />
+          <Route path="/jobs/:pipeline/:jobId" element={<JobProgressPage />} />
+          <Route path="/viewer/:pipeline/:jobId" element={<ViewerStagePage />} />
+          <Route path="/three-view" element={<Navigate to="/views" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </WorkspaceProvider>
