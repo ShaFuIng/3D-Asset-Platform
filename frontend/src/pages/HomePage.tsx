@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import { getLibraryAssets, resolveApiUrl } from '../api/client';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { getLibraryAssets } from '../api/client';
+import { OrbitalDevice } from '../components/OrbitalDevice';
+import { useCursorParallax } from '../hooks/useCursorParallax';
 import { useWorkspace } from '../context/WorkspaceContext';
+import { getStageNavItems, type StageNavState } from '../navigation/stageNav';
 import type { ServiceHealthState } from '../types/api';
 
 type HomePageProps = {
@@ -10,15 +13,25 @@ type HomePageProps = {
   comfy: ServiceHealthState;
 };
 
-function statusLabel(state: ServiceHealthState): string {
-  return state.message ? `${state.status} — ${state.message}` : state.status;
+const NAV_STATE_TEXT: Record<StageNavState, string> = {
+  done: '已完成',
+  current: '目前階段',
+  available: '可前往',
+  locked: '尚未解鎖',
+  na: '不適用',
+};
+
+function staggerStyle(index: number): CSSProperties {
+  return { '--i': index } as CSSProperties;
 }
 
-// Home Hub: entry point plus an overview of everything this session is
-// tracking, with direct links back into the right pipeline stage.
+// Home Hub: industrial terminal main menu. Left rail = asset library +
+// services, center = the orbital device as the primary entry, right rail =
+// five-stage session navigation (rules shared with StageShell).
 export function HomePage({ backend, openai, comfy }: HomePageProps) {
-  const { images, selectedImageId, singleJobsByImageId, multiviewByImageId, hasActiveJobs } =
+  const { images, selectedImageId, pipelineByImageId, singleJobsByImageId, multiviewByImageId, hasActiveJobs } =
     useWorkspace();
+  const parallaxRef = useCursorParallax<HTMLDivElement>();
   const [libraryCounts, setLibraryCounts] = useState<{
     images: number;
     models: number;
@@ -59,154 +72,141 @@ export function HomePage({ backend, openai, comfy }: HomePageProps) {
   }, []);
 
   const selectedImage = images.find((image) => image.image_id === selectedImageId);
+  const navItems = getStageNavItems({
+    imageId: selectedImageId,
+    pipelineByImageId,
+    singleJobsByImageId,
+    multiviewByImageId,
+  });
+  const hasAnyWork =
+    images.length > 0 ||
+    Object.values(singleJobsByImageId).some((entry) => entry.job) ||
+    Object.values(multiviewByImageId).some((workspace) => workspace.job);
 
-  const singleWork = Object.entries(singleJobsByImageId)
-    .filter(([, entry]) => entry.job)
-    .map(([imageId, entry]) => ({ imageId, entry, image: images.find((img) => img.image_id === imageId) }));
-
-  const multiviewWork = Object.entries(multiviewByImageId)
-    .filter(([, workspace]) => workspace.job)
-    .map(([imageId, workspace]) => ({
-      imageId,
-      workspace,
-      image: images.find((img) => img.image_id === imageId),
-    }));
-
-  const hasAnyWork = images.length > 0 || singleWork.length > 0 || multiviewWork.length > 0;
+  const services: Array<{ label: string; state: ServiceHealthState }> = [
+    { label: 'Backend', state: backend },
+    { label: 'OpenAI', state: openai },
+    { label: 'ComfyUI', state: comfy },
+  ];
 
   return (
-    <div className="home-page">
-      <section className="home-hero">
-        <p className="eyebrow">GPT IMAGE TO HUNYUAN3D</p>
+    <div className="console-home" ref={parallaxRef}>
+      <span className="home-bg-word" aria-hidden="true">
+        ASSET CONSOLE
+      </span>
+
+      <header className="home-head stagger" style={staggerStyle(0)}>
+        <p className="eyebrow">GPT IMAGE TO HUNYUAN3D // GENERATION TERMINAL</p>
         <h2>生成式 AI 3D 資產平台</h2>
-        <p>從一張參考圖出發，選擇單圖直出或多視圖確認流程，生成可預覽、可下載的 3D 模型。</p>
-        <Link className="home-entry-card" to="/reference">
-          <span className="home-entry-title">開始新資產</span>
-          <span className="home-entry-sub">NEW ASSET · 生成或上傳 Reference Image</span>
-        </Link>
-      </section>
+      </header>
 
-      <section className="panel home-status-panel">
-        <div className="section-header">
-          <h2>服務狀態</h2>
-          <span>SERVICES</span>
-        </div>
-        <div className="status-grid">
-          <div className="status-row">
-            <span>Backend</span>
-            <strong data-status={backend.status}>{backend.status}</strong>
-            <small>{statusLabel(backend)}</small>
-          </div>
-          <div className="status-row">
-            <span>OpenAI</span>
-            <strong data-status={openai.status}>{openai.status}</strong>
-            <small>{statusLabel(openai)}</small>
-          </div>
-          <div className="status-row">
-            <span>ComfyUI</span>
-            <strong data-status={comfy.status}>{comfy.status}</strong>
-            <small>{statusLabel(comfy)}</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel home-library-panel">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">ASSET LIBRARY</p>
-            <h2>資產庫</h2>
-          </div>
-          <Link to="/library">開啟資產庫 →</Link>
-        </div>
-        {libraryCounts.isLoading ? (
-          <p className="hint">Loading asset counts...</p>
-        ) : libraryCounts.error ? (
-          <p className="hint error">{libraryCounts.error}</p>
-        ) : (
-          <div className="library-count-grid">
-            <div>
-              <strong>{libraryCounts.images.toLocaleString()}</strong>
-              <span>Images</span>
-            </div>
-            <div>
-              <strong>{libraryCounts.models.toLocaleString()}</strong>
-              <span>Models</span>
-            </div>
-            <div>
-              <strong>{libraryCounts.trash.toLocaleString()}</strong>
-              <span>Trash</span>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="panel home-work-panel">
-        <div className="section-header">
-          <h2>目前工作階段</h2>
-          <span>{hasActiveJobs ? '有工作進行中' : 'SESSION'}</span>
-        </div>
-
-        {!hasAnyWork && (
-          <div className="empty-state compact">尚無工作階段。從「開始新資產」建立第一張 Reference Image。</div>
-        )}
-
-        {selectedImage && (
-          <div className="home-work-card">
-            <img src={resolveApiUrl(selectedImage.url)} alt="Current reference" />
-            <div>
-              <strong>目前 Reference（{selectedImage.source === 'generated' ? '生成' : '上傳'}）</strong>
-              <p className="hint">已選擇一張參考圖，可直接選擇生成模式。</p>
-            </div>
-            <Link to="/mode">選擇模式 →</Link>
-          </div>
-        )}
-
-        {singleWork.map(({ imageId, entry, image }) => (
-          <div className="home-work-card" key={`single-${imageId}`}>
-            {image && <img src={resolveApiUrl(image.url)} alt="Single-view reference" />}
-            <div>
-              <strong>
-                Single-view 3D <span className="badge" data-kind={entry.job!.status}>{entry.job!.status}</span>
-              </strong>
-              <p className="hint">{entry.job!.message}</p>
-            </div>
-            {entry.job!.status === 'succeeded' && entry.modelUrl ? (
-              <Link to={`/viewer/single/${entry.job!.job_id}`}>檢視模型 →</Link>
-            ) : (
-              <Link to={`/jobs/single/${entry.job!.job_id}`}>查看進度 →</Link>
-            )}
-          </div>
-        ))}
-
-        {multiviewWork.map(({ imageId, workspace, image }) => {
-          const modelStatus = workspace.modelJob?.status;
-          return (
-            <div className="home-work-card" key={`multiview-${imageId}`}>
-              {image && <img src={resolveApiUrl(image.url)} alt="Multiview reference" />}
+      <div className="home-grid">
+        <div className="home-col home-col-left">
+          <section className="panel home-library-panel stagger" style={staggerStyle(1)}>
+            <div className="section-header">
               <div>
-                <strong>
-                  Multiview 3D{' '}
-                  <span className="badge" data-kind={modelStatus ?? workspace.job!.status}>
-                    {modelStatus ?? workspace.job!.status}
-                  </span>
-                </strong>
-                <p className="hint">{workspace.modelJob?.message ?? workspace.job!.message}</p>
+                <p className="eyebrow">ASSET LIBRARY</p>
+                <h2>資產庫</h2>
               </div>
-              {modelStatus === 'succeeded' ? (
-                <Link to={`/viewer/multiview/${workspace.job!.jobId}`}>檢視模型 →</Link>
-              ) : modelStatus ? (
-                <Link to={`/jobs/multiview/${workspace.job!.jobId}`}>查看進度 →</Link>
-              ) : (
-                <Link to={`/views/${imageId}`}>繼續視圖確認 →</Link>
-              )}
+              <Link to="/library">開啟資產庫 →</Link>
             </div>
-          );
-        })}
+            {libraryCounts.isLoading ? (
+              <p className="hint">Loading asset counts...</p>
+            ) : libraryCounts.error ? (
+              <p className="hint error">{libraryCounts.error}</p>
+            ) : (
+              <div className="library-count-grid">
+                <div>
+                  <strong>{libraryCounts.images.toLocaleString()}</strong>
+                  <span>Images</span>
+                </div>
+                <div>
+                  <strong>{libraryCounts.models.toLocaleString()}</strong>
+                  <span>Models</span>
+                </div>
+                <div>
+                  <strong>{libraryCounts.trash.toLocaleString()}</strong>
+                  <span>Trash</span>
+                </div>
+              </div>
+            )}
+          </section>
 
-        {hasAnyWork && (
-          <p className="hint">工作階段狀態僅保存在記憶體；重新整理頁面將失去這些追蹤資訊（檔案仍保留在後端）。</p>
-        )}
-      </section>
+          <section className="panel home-status-panel stagger" style={staggerStyle(2)}>
+            <div className="section-header">
+              <h2>服務狀態</h2>
+              <span>SERVICES</span>
+            </div>
+            <div className="service-list">
+              {services.map(({ label, state }) => (
+                <div className="service-row" data-status={state.status} key={label}>
+                  <span className="status-dot-light" aria-hidden="true" />
+                  <span className="service-name">{label}</span>
+                  <strong>{state.status}</strong>
+                  {state.message && <small>{state.message}</small>}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <Link
+          className="home-center home-center-entry stagger par-tilt"
+          style={staggerStyle(3)}
+          to="/reference"
+          aria-label="開始新資產：前往 Reference 階段"
+        >
+          <OrbitalDevice />
+          <span className="home-center-cta">
+            <span className="home-center-cta-sub">NEW ASSET // INITIATE</span>
+            <span className="home-center-cta-title">開始新資產</span>
+          </span>
+        </Link>
+
+        <div className="home-col home-col-right">
+          <section className="panel session-nav-panel stagger" style={staggerStyle(4)}>
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">SESSION NAVIGATION</p>
+                <h2>目前工作階段</h2>
+              </div>
+              <span>{hasActiveJobs ? 'ACTIVE' : 'STANDBY'}</span>
+            </div>
+
+            <div className="session-nav">
+              {navItems.map((item) => {
+                const inner = (
+                  <>
+                    <span className="session-nav-index">{String(item.index + 1).padStart(2, '0')}</span>
+                    <span className="session-nav-text">
+                      <strong>{item.label}</strong>
+                      <small>{item.en}</small>
+                    </span>
+                    <span className="session-nav-state">{NAV_STATE_TEXT[item.state]}</span>
+                    {item.note && <span className="session-nav-note">{item.note}</span>}
+                  </>
+                );
+                return item.destination ? (
+                  <Link className="session-nav-item" data-state={item.state} to={item.destination} key={item.id}>
+                    {inner}
+                  </Link>
+                ) : (
+                  <span className="session-nav-item" data-state={item.state} aria-disabled="true" key={item.id}>
+                    {inner}
+                  </span>
+                );
+              })}
+            </div>
+
+            {selectedImage && (
+              <p className="hint">目前 Reference：{selectedImage.filename}</p>
+            )}
+            {hasAnyWork && (
+              <p className="hint">工作階段狀態僅保存在記憶體；重新整理頁面將失去追蹤資訊（檔案仍保留在後端）。</p>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

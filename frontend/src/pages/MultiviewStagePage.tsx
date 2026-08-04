@@ -166,11 +166,8 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
       current="views"
       pipeline="multiview"
       stepperImageId={imageId}
-      viewsPath={`/views/${imageId}`}
       eyebrow="MULTI-VIEW PIPELINE · VIEWS"
       title="生成並確認 Front / Left / Back"
-      backTo="/mode"
-      backLabel="模式"
       actions={
         <>
           <div className="action-bar-summary">

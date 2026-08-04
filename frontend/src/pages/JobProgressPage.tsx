@@ -54,7 +54,6 @@ export function JobProgressPage() {
   }
 
   const viewsPath = routed.pipeline === 'multiview' ? `/views/${routed.imageId}` : undefined;
-  const backTo = routed.pipeline === 'single' ? '/generate' : viewsPath;
   const viewerPath = `/viewer/${routed.pipeline}/${jobId}`;
 
   const status = routed.pipeline === 'single' ? routed.entry.job?.status : routed.workspace.modelJob?.status;
@@ -69,11 +68,8 @@ export function JobProgressPage() {
         current="generate"
         pipeline={routed.pipeline}
         stepperImageId={routed.imageId}
-        viewsPath={viewsPath}
       eyebrow={`${routed.pipeline === 'single' ? 'SINGLE-VIEW' : 'MULTI-VIEW'} PIPELINE · GENERATE`}
       title="3D 生成進度"
-      backTo={backTo}
-      backLabel={routed.pipeline === 'single' ? '生成確認' : '視圖確認'}
       actions={
         <>
           <div className="action-bar-summary">
@@ -156,7 +152,7 @@ export function JobProgressPage() {
 
 function MissingJob({ reason }: { reason: string }) {
   return (
-    <StageShell current="generate" pipeline={null} eyebrow="GENERATE" title="找不到這個生成工作" backTo="/" backLabel="首頁">
+    <StageShell current="generate" pipeline={null} eyebrow="GENERATE" title="找不到這個生成工作">
       <section className="panel">
         <p>{reason}</p>
         <div className="recovery-actions">

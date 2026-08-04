@@ -21,7 +21,7 @@ export function ViewerStagePage() {
 
   if (!routed) {
     return (
-      <StageShell current="inspect" pipeline={pipeline} eyebrow="INSPECT" title="找不到這個模型" backTo="/" backLabel="首頁">
+      <StageShell current="inspect" pipeline={pipeline} eyebrow="INSPECT" title="找不到這個模型">
         <section className="panel">
           <p>這個模型不存在於目前的工作階段。頁面可能經過重新整理，記憶體中的追蹤資訊已重置（已生成的檔案仍保留在後端）。</p>
           <div className="recovery-actions">
@@ -35,7 +35,6 @@ export function ViewerStagePage() {
     );
   }
 
-  const jobPath = `/jobs/${routed.pipeline}/${jobId}`;
   const viewsPath = routed.pipeline === 'multiview' ? `/views/${routed.imageId}` : undefined;
 
   if (routed.pipeline === 'single') {
@@ -47,8 +46,6 @@ export function ViewerStagePage() {
         stepperImageId={routed.imageId}
         eyebrow="SINGLE-VIEW PIPELINE · INSPECT"
         title="3D 模型檢視"
-        backTo={jobPath}
-        backLabel="生成進度"
       >
         <section className="panel viewer-panel">
           <div className="section-header">
@@ -92,11 +89,8 @@ export function ViewerStagePage() {
         current="inspect"
         pipeline="multiview"
         stepperImageId={routed.imageId}
-        viewsPath={viewsPath}
       eyebrow="MULTI-VIEW PIPELINE · INSPECT"
       title="3D 模型檢視"
-      backTo={jobPath}
-      backLabel="生成進度"
       actions={
         <>
           <div className="action-bar-summary">
