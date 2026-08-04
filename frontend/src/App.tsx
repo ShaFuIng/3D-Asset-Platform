@@ -7,6 +7,7 @@ import {
   getOpenAIHealth,
 } from './api/client';
 import { ServiceStatusPanel } from './components/ServiceStatusPanel';
+import { WorkspaceProvider } from './context/WorkspaceContext';
 import { SingleImageWorkspace } from './pages/SingleImageWorkspace';
 import type { ServiceHealthState } from './types/api';
 
@@ -58,11 +59,13 @@ export default function App() {
     <main className="app">
       <ServiceStatusPanel backend={backend} openai={openai} comfy={comfy} />
 
-      <Routes>
-        <Route path="/" element={<SingleImageWorkspace openai={openai} comfy={comfy} />} />
-        <Route path="/three-view" element={<Navigate to="/?mode=multiview" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <WorkspaceProvider>
+        <Routes>
+          <Route path="/" element={<SingleImageWorkspace openai={openai} comfy={comfy} />} />
+          <Route path="/three-view" element={<Navigate to="/?mode=multiview" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </WorkspaceProvider>
     </main>
   );
 }

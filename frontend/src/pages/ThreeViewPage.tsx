@@ -1,20 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  acceptMultiviewView,
-  ApiClientError,
-  createMultiviewJob,
-  createMultiviewModelJob,
-  getMultiviewJob,
-  getMultiviewModelJob,
-  regenerateMultiviewView,
-  resolveApiUrl,
-} from '../api/client';
+import { useMemo } from 'react';
+import { resolveApiUrl } from '../api/client';
 import { ModelViewer } from '../components/ModelViewer';
+import { useWorkspace } from '../context/WorkspaceContext';
 import type {
   ImageAsset,
   JobStatus,
-  MultiviewJobResponse,
-  MultiviewModelJobResponse,
   MultiviewName,
   ServiceHealthState,
 } from '../types/api';
@@ -27,18 +17,6 @@ const VIEW_LABELS: Record<MultiviewName, string> = {
   back: 'Back',
 };
 
-type ModelKind = 'geometry' | 'textured';
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof DOMException && error.name === 'AbortError') {
-    return '';
-  }
-  if (error instanceof ApiClientError || error instanceof Error) {
-    return error.message;
-  }
-  return '操作失敗。';
-}
-
 function isPending(status?: JobStatus) {
   return status === 'queued' || status === 'running';
 }
@@ -49,12 +27,25 @@ type MultiviewPanelProps = {
 };
 
 export function MultiviewPanel({ selectedImage, comfy }: MultiviewPanelProps) {
-  const [job, setJob] = useState<MultiviewJobResponse | null>(null);
-  const [modelJob, setModelJob] = useState<MultiviewModelJobResponse | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isStartingModel, setIsStartingModel] = useState(false);
-  const [activeModelKind, setActiveModelKind] = useState<ModelKind>('textured');
-  const [error, setError] = useState<string | null>(null);
+  const {
+    multiviewByImageId,
+    startMultiview,
+    acceptView,
+    regenerateView,
+    startModelJob,
+    setMultiviewModelKind,
+  } = useWorkspace();
+
+  const imageId = selectedImage?.image_id;
+  // Each image owns an isolated multiview workspace; selecting another image
+  // never shows or touches this image's job state.
+  const workspace = imageId ? multiviewByImageId[imageId] : undefined;
+  const job = workspace?.job ?? null;
+  const modelJob = workspace?.modelJob ?? null;
+  const isStarting = workspace?.isStarting ?? false;
+  const isStartingModel = workspace?.isStartingModel ?? false;
+  const activeModelKind = workspace?.activeModelKind ?? 'textured';
+  const error = workspace?.error ?? null;
 
   const hasCandidate = useMemo(
     () => Boolean(job && VIEW_ORDER.some((view) => job.views[view].candidateImage)),
@@ -74,107 +65,30 @@ export function MultiviewPanel({ selectedImage, comfy }: MultiviewPanelProps) {
   const activeModelUrl = activeModelKind === 'textured' ? texturedUrl || geometryUrl : geometryUrl || texturedUrl;
   const isComfyDisconnected = comfy.status !== 'connected';
 
-  useEffect(() => {
-    if (!job || !isPending(job.status)) {
+  function handleStartMultiview() {
+    if (!imageId || isComfyDisconnected) {
       return;
     }
-    const controller = new AbortController();
-    const timerId = window.setInterval(() => {
-      void getMultiviewJob(job.jobId, controller.signal)
-        .then(setJob)
-        .catch((nextError) => {
-          const message = getErrorMessage(nextError);
-          if (message) setError(message);
-        });
-    }, 2000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timerId);
-    };
-  }, [job?.jobId, job?.status]);
+    void startMultiview(imageId);
+  }
 
-  useEffect(() => {
-    if (!job || !modelJob || !isPending(modelJob.status)) {
-      return;
-    }
-    const controller = new AbortController();
-    const timerId = window.setInterval(() => {
-      void getMultiviewModelJob(job.jobId, controller.signal)
-        .then((nextModelJob) => {
-          setModelJob(nextModelJob);
-          if (nextModelJob.texturedModel.available) {
-            setActiveModelKind('textured');
-          } else if (nextModelJob.geometryModel.available) {
-            setActiveModelKind('geometry');
-          }
-        })
-        .catch((nextError) => {
-          const message = getErrorMessage(nextError);
-          if (message) setError(message);
-        });
-    }, 2000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timerId);
-    };
-  }, [job?.jobId, modelJob?.status]);
-
-  async function handleStartMultiview() {
-    if (!selectedImage || isStarting || isComfyDisconnected) {
-      return;
-    }
-    setIsStarting(true);
-    setError(null);
-    setJob(null);
-    setModelJob(null);
-    try {
-      const created = await createMultiviewJob(selectedImage.image_id);
-      const nextJob = await getMultiviewJob(created.jobId);
-      setJob(nextJob);
-    } catch (nextError) {
-      setError(getErrorMessage(nextError));
-    } finally {
-      setIsStarting(false);
+  function handleAcceptView(view: MultiviewName) {
+    if (imageId) {
+      void acceptView(imageId, view);
     }
   }
 
-  async function handleAcceptView(view: MultiviewName) {
-    if (!job) {
-      return;
-    }
-    setError(null);
-    try {
-      setJob(await acceptMultiviewView(job.jobId, view));
-    } catch (nextError) {
-      setError(getErrorMessage(nextError));
+  function handleRegenerateView(view: MultiviewName) {
+    if (imageId) {
+      void regenerateView(imageId, view);
     }
   }
 
-  async function handleRegenerateView(view: MultiviewName) {
-    if (!job) {
+  function handleStartModelJob() {
+    if (!imageId || !canStartModel) {
       return;
     }
-    setError(null);
-    try {
-      setJob(await regenerateMultiviewView(job.jobId, view));
-    } catch (nextError) {
-      setError(getErrorMessage(nextError));
-    }
-  }
-
-  async function handleStartModelJob() {
-    if (!job || !canStartModel || isStartingModel) {
-      return;
-    }
-    setIsStartingModel(true);
-    setError(null);
-    try {
-      setModelJob(await createMultiviewModelJob(job.jobId));
-    } catch (nextError) {
-      setError(getErrorMessage(nextError));
-    } finally {
-      setIsStartingModel(false);
-    }
+    void startModelJob(imageId);
   }
 
   return (
@@ -206,7 +120,13 @@ export function MultiviewPanel({ selectedImage, comfy }: MultiviewPanelProps) {
 
           <button
             type="button"
-            disabled={!selectedImage || isStarting || isPending(job?.status) || isComfyDisconnected}
+            disabled={
+              !selectedImage ||
+              isStarting ||
+              isPending(job?.status) ||
+              isPending(modelJob?.status) ||
+              isComfyDisconnected
+            }
             onClick={handleStartMultiview}
           >
             {isStarting || isPending(job?.status) ? '生成三視圖中...' : '生成 Front / Left / Back'}
@@ -301,10 +221,18 @@ export function MultiviewPanel({ selectedImage, comfy }: MultiviewPanelProps) {
           <span>{modelJob?.status ?? 'not started'}</span>
         </div>
         <div className="model-toggle" role="group" aria-label="Model result selector">
-          <button type="button" data-selected={activeModelKind === 'geometry'} onClick={() => setActiveModelKind('geometry')}>
+          <button
+            type="button"
+            data-selected={activeModelKind === 'geometry'}
+            onClick={() => imageId && setMultiviewModelKind(imageId, 'geometry')}
+          >
             Geometry
           </button>
-          <button type="button" data-selected={activeModelKind === 'textured'} onClick={() => setActiveModelKind('textured')}>
+          <button
+            type="button"
+            data-selected={activeModelKind === 'textured'}
+            onClick={() => imageId && setMultiviewModelKind(imageId, 'textured')}
+          >
             Textured
           </button>
         </div>
