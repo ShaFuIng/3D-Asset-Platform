@@ -80,10 +80,16 @@ export function HomePage({ backend, openai, comfy }: HomePageProps) {
         <p className="eyebrow">GPT IMAGE TO HUNYUAN3D</p>
         <h2>生成式 AI 3D 資產平台</h2>
         <p>從一張參考圖出發，選擇單圖直出或多視圖確認流程，生成可預覽、可下載的 3D 模型。</p>
-        <Link className="home-entry-card" to="/reference">
-          <span className="home-entry-title">開始新資產</span>
-          <span className="home-entry-sub">NEW ASSET · 生成或上傳 Reference Image</span>
-        </Link>
+        <div className="home-entry-row">
+          <Link className="home-entry-card" to="/reference">
+            <span className="home-entry-title">開始新資產</span>
+            <span className="home-entry-sub">NEW ASSET · 生成或上傳 Reference Image</span>
+          </Link>
+          <Link className="home-entry-card" to="/video-upload">
+            <span className="home-entry-title">上傳影片</span>
+            <span className="home-entry-sub">VIDEO · 從影片擷取畫面</span>
+          </Link>
+        </div>
       </section>
 
       <section className="panel home-status-panel">

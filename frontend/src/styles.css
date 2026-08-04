@@ -1154,11 +1154,17 @@ code {
   color: #64748b;
 }
 
+.home-entry-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
 .home-entry-card {
   display: grid;
   gap: 4px;
   max-width: 420px;
-  margin-top: 8px;
   padding: 18px 20px;
   border: 1px solid #245e91;
   border-radius: 8px;
@@ -1667,11 +1673,67 @@ code {
   min-width: 0;
 }
 
+/* Video frame picker */
+.video-picker-page {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.video-picker-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.video-picker-source-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.video-picker-frames-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.video-picker-stage {
+  position: relative;
+}
+
+.video-picker-source {
+  display: none;
+}
+
+.video-picker-canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid #d3dce1;
+  border-radius: 8px;
+  background: #eef3f1;
+}
+
+.video-picker-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.video-picker-controls input[type='range'] {
+  width: 100%;
+}
+
 @media (max-width: 1180px) {
   .reference-layout,
   .mode-layout,
   .views-layout,
-  .confirm-layout {
+  .confirm-layout,
+  .video-picker-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1715,6 +1777,10 @@ code {
   .library-count-grid,
   .library-toolbar,
   .asset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .video-picker-controls {
     grid-template-columns: 1fr;
   }
 
