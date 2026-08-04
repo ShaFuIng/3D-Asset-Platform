@@ -22,12 +22,25 @@ class FakeOpenAIClient:
         self.image_bytes = image_bytes
         self.error = error
         self.previous_response_id = None
+        self.edit_calls = []
 
     async def generate_image(self, messages, previous_response_id=None):
         self.previous_response_id = previous_response_id
         if self.error:
             raise self.error
         return self.image_bytes, "A revised prompt.", "response-123"
+
+    async def edit_image(self, source_bytes, source_media_type, prompt):
+        self.edit_calls.append(
+            {
+                "source_bytes": source_bytes,
+                "source_media_type": source_media_type,
+                "prompt": prompt,
+            }
+        )
+        if self.error:
+            raise self.error
+        return self.image_bytes, "An edited prompt.", "response-edit-123"
 
 
 class FakeComfyClient:

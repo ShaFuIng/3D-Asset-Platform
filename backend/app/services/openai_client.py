@@ -54,6 +54,44 @@ class OpenAIImageClient:
             log_openai_error(exc)
             raise ApiError(502, "openai_request_failed", "OpenAI image generation failed.") from exc
 
+        return self._parse_image_response(response)
+
+    async def edit_image(
+        self,
+        source_bytes: bytes,
+        source_media_type: str,
+        prompt: str,
+    ) -> tuple[bytes, str | None, str]:
+        if not self.settings.openai_api_key:
+            raise ApiError(503, "openai_not_configured", "OPENAI_API_KEY is not configured.")
+
+        source_data_url = self._to_data_url(source_bytes, source_media_type)
+        client = AsyncOpenAI(api_key=self.settings.openai_api_key)
+        response_request: dict[str, Any] = {
+            "model": self.settings.openai_response_model,
+            "instructions": IMAGE_GENERATION_INSTRUCTIONS,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": prompt},
+                        {"type": "input_image", "image_url": source_data_url},
+                    ],
+                }
+            ],
+            "tools": [{"type": "image_generation", "action": "edit"}],
+            "tool_choice": {"type": "image_generation"},
+        }
+
+        try:
+            response = await client.responses.create(**response_request)
+        except (APIError, OpenAIError) as exc:
+            log_openai_error(exc)
+            raise ApiError(502, "openai_request_failed", "OpenAI image edit failed.") from exc
+
+        return self._parse_image_response(response)
+
+    def _parse_image_response(self, response: Any) -> tuple[bytes, str | None, str]:
         image_call = next(
             (output for output in response.output if output.type == "image_generation_call"),
             None,
@@ -71,6 +109,10 @@ class OpenAIImageClient:
             raise ApiError(502, "openai_invalid_image", "OpenAI returned invalid image data.") from exc
 
         return image_bytes, getattr(image_call, "revised_prompt", None), response.id
+
+    def _to_data_url(self, content: bytes, media_type: str) -> str:
+        encoded = base64.b64encode(content).decode("ascii")
+        return f"data:{media_type};base64,{encoded}"
 
     def _to_response_input(self, messages: list[ChatMessage]) -> list[dict[str, object]]:
         return [

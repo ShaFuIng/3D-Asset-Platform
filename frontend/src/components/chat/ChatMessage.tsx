@@ -12,7 +12,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
         <time>{message.createdAt}</time>
       </div>
       <p>{message.content}</p>
-      {message.imageId && <code>image_id: {message.imageId}</code>}
     </article>
   );
 }

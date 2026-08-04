@@ -44,7 +44,7 @@ export function ChatComposer({
         value={prompt}
         onChange={(event) => onPromptChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="描述你想生成或修改的角色、物件或風格..."
+        placeholder="描述你想產生的角色、物件或風格..."
         disabled={isGenerating}
       />
       <div className="chat-actions">

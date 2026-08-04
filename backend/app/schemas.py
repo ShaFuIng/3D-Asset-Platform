@@ -29,6 +29,18 @@ class GenerateImageRequest(BaseModel):
         return value
 
 
+class EditImageRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("prompt")
+    @classmethod
+    def prompt_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("prompt must not be blank")
+        return stripped
+
+
 class ImageResponse(BaseModel):
     image_id: str
     filename: str
@@ -36,6 +48,14 @@ class ImageResponse(BaseModel):
 
 
 class GeneratedImageResponse(ImageResponse):
+    assistant_message: str
+    image_prompt: str | None
+    response_id: str
+
+
+class EditedImageResponse(ImageResponse):
+    source: Literal["edited"]
+    parent_image_id: str
     assistant_message: str
     image_prompt: str | None
     response_id: str

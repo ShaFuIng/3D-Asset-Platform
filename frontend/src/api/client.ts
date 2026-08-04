@@ -5,6 +5,7 @@ import type {
   ComfyHealthResponse,
   Create3DJobResponse,
   CreateMultiviewJobResponse,
+  EditImageResponse,
   GenerateImageResponse,
   JobResponse,
   MultiviewJobResponse,
@@ -72,6 +73,32 @@ export async function uploadImage(file: File, signal?: AbortSignal): Promise<Upl
     body: form,
     signal,
   });
+}
+
+export async function editImage(
+  sourceImageId: string,
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<EditImageResponse> {
+  const data = await requestJson<EditImageResponseBody>(
+    `/api/images/${encodeURIComponent(sourceImageId)}/edits`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+      signal,
+    },
+  );
+  return {
+    image_id: data.image_id,
+    filename: data.filename,
+    url: data.url,
+    source: data.source,
+    parentImageId: data.parent_image_id,
+    assistant_message: data.assistant_message,
+    image_prompt: data.image_prompt,
+    response_id: data.response_id,
+  };
 }
 
 export async function create3DJob(
@@ -186,6 +213,17 @@ type MultiviewImageRefBody = {
   image_id: string;
   filename: string;
   url: string;
+};
+
+type EditImageResponseBody = {
+  image_id: string;
+  filename: string;
+  url: string;
+  source: 'edited';
+  parent_image_id: string;
+  assistant_message: string;
+  image_prompt: string | null;
+  response_id: string;
 };
 
 type MultiviewSlotBody = {

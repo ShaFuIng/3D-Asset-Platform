@@ -25,9 +25,18 @@ export function ReferenceStagePage({ openai }: ReferenceStagePageProps) {
     errorMessage,
     isGenerating,
     isUploading,
+    archivedImageIds,
+    editingImageIds,
+    imageEditErrors,
+    editPromptByImageId,
     generateImage,
     uploadImage,
     selectImage,
+    startNewConversation,
+    archiveImage,
+    restoreImage,
+    setEditPrompt,
+    editImage,
   } = useWorkspace();
 
   const selectedImage = images.find((image) => image.image_id === selectedImageId);
@@ -85,16 +94,30 @@ export function ReferenceStagePage({ openai }: ReferenceStagePageProps) {
             }
           }}
           onUpload={(file) => void uploadImage(file)}
+          onStartNewConversation={startNewConversation}
         />
 
         <div className="reference-side">
-          <ImageGallery images={images} selectedImageId={selectedImageId} onSelect={selectImage} />
+          <ImageGallery
+            images={images}
+            selectedImageId={selectedImageId}
+            archivedImageIds={archivedImageIds}
+            editingImageIds={editingImageIds}
+            imageEditErrors={imageEditErrors}
+            editPromptByImageId={editPromptByImageId}
+            onSelect={selectImage}
+            onArchive={archiveImage}
+            onRestore={restoreImage}
+            onEditPromptChange={setEditPrompt}
+            onEdit={editImage}
+          />
           {selectedImage && (
             <TechnicalDetails
               items={[
                 ['image_id', selectedImage.image_id],
                 ['filename', selectedImage.filename],
                 ['source', selectedImage.source],
+                ['parent_image_id', selectedImage.parentImageId],
               ]}
             />
           )}

@@ -5,6 +5,7 @@ import {
   create3DJob,
   createMultiviewJob,
   createMultiviewModelJob,
+  editImage as requestEditImage,
   generateImage as requestGenerateImage,
   get3DJob,
   getMultiviewJob,
@@ -117,9 +118,18 @@ export type WorkspaceContextValue = {
   errorMessage?: string;
   isGenerating: boolean;
   isUploading: boolean;
+  archivedImageIds: Record<string, true>;
+  editingImageIds: Record<string, true>;
+  imageEditErrors: Record<string, string>;
+  editPromptByImageId: Record<string, string>;
   generateImage: () => Promise<void>;
   uploadImage: (file: File) => Promise<void>;
   selectImage: (image: ImageAsset) => void;
+  startNewConversation: () => void;
+  archiveImage: (imageId: string) => void;
+  restoreImage: (imageId: string) => void;
+  setEditPrompt: (imageId: string, value: string) => void;
+  editImage: (sourceImageId: string, prompt: string) => Promise<ImageAsset | undefined>;
 
   // Pipeline choice per image. Pure UI state: setting it never calls an API.
   pipelineByImageId: Record<string, Pipeline>;
@@ -158,6 +168,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [archivedImageIds, setArchivedImageIds] = useState<Record<string, true>>({});
+  const [editingImageIds, setEditingImageIds] = useState<Record<string, true>>({});
+  const [imageEditErrors, setImageEditErrors] = useState<Record<string, string>>({});
+  const [editPromptByImageId, setEditPromptByImageId] = useState<Record<string, string>>({});
 
   const [pipelineByImageId, setPipelineByImageId] = useState<Record<string, Pipeline>>({});
   const [singleJobsByImageId, setSingleJobsByImageId] = useState<Record<string, JobEntry>>({});
@@ -172,6 +186,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const multiviewStartLockRef = useRef<Set<string>>(new Set());
   const modelStartLockRef = useRef<Set<string>>(new Set());
   const viewActionLockRef = useRef<Set<string>>(new Set());
+  const imageEditLockRef = useRef<Set<string>>(new Set());
 
   function updateSingleJobEntry(imageId: string, updater: (entry: JobEntry) => JobEntry) {
     setSingleJobsByImageId((current) => ({
@@ -436,6 +451,93 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   function selectImage(image: ImageAsset) {
     setSelectedImageId(image.image_id);
+  }
+
+  function startNewConversation() {
+    if (isGenerating) {
+      return;
+    }
+    setConversation([]);
+    setPreviousResponseId(undefined);
+    setPrompt('');
+    setActivityMessage(undefined);
+    setErrorMessage(undefined);
+  }
+
+  function archiveImage(imageId: string) {
+    setArchivedImageIds((current) => ({ ...current, [imageId]: true }));
+    setSelectedImageId((current) => {
+      if (current !== imageId) {
+        return current;
+      }
+      return images.find((image) => image.image_id !== imageId && !archivedImageIds[image.image_id])?.image_id;
+    });
+  }
+
+  function restoreImage(imageId: string) {
+    setArchivedImageIds((current) => {
+      if (!current[imageId]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+  }
+
+  function setEditPrompt(imageId: string, value: string) {
+    setEditPromptByImageId((current) => ({ ...current, [imageId]: value }));
+  }
+
+  async function editImage(sourceImageId: string, editPrompt: string): Promise<ImageAsset | undefined> {
+    const content = editPrompt.trim();
+    const lock = imageEditLockRef.current;
+    if (!content || lock.has(sourceImageId) || !images.some((image) => image.image_id === sourceImageId)) {
+      return undefined;
+    }
+    lock.add(sourceImageId);
+    setEditingImageIds((current) => ({ ...current, [sourceImageId]: true }));
+    setImageEditErrors((current) => {
+      if (!current[sourceImageId]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[sourceImageId];
+      return next;
+    });
+
+    try {
+      const data = await requestEditImage(sourceImageId, content);
+      const image: ImageAsset = {
+        ...data,
+        source: 'edited',
+        parentImageId: data.parentImageId,
+      };
+      addAndSelectImage(image);
+      setEditPromptByImageId((current) => {
+        if (!current[sourceImageId]) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[sourceImageId];
+        return next;
+      });
+      return image;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setImageEditErrors((current) => ({ ...current, [sourceImageId]: message }));
+      return undefined;
+    } finally {
+      lock.delete(sourceImageId);
+      setEditingImageIds((current) => {
+        if (!current[sourceImageId]) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[sourceImageId];
+        return next;
+      });
+    }
   }
 
   async function generateImage() {
@@ -737,9 +839,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     errorMessage,
     isGenerating,
     isUploading,
+    archivedImageIds,
+    editingImageIds,
+    imageEditErrors,
+    editPromptByImageId,
     generateImage,
     uploadImage,
     selectImage,
+    startNewConversation,
+    archiveImage,
+    restoreImage,
+    setEditPrompt,
+    editImage,
     pipelineByImageId,
     setPipeline,
     singleJobsByImageId,

@@ -32,13 +32,14 @@ export type ChatMessage = {
   content: string;
 };
 
-export type ImageSource = 'generated' | 'uploaded';
+export type ImageSource = 'generated' | 'uploaded' | 'edited';
 
 export type ImageAsset = {
   image_id: string;
   filename: string;
   url: string;
   source: ImageSource;
+  parentImageId?: string;
   assistant_message?: string;
   image_prompt?: string | null;
 };
@@ -56,6 +57,17 @@ export type UploadImageResponse = {
   image_id: string;
   filename: string;
   url: string;
+};
+
+export type EditImageResponse = {
+  image_id: string;
+  filename: string;
+  url: string;
+  source: 'edited';
+  parentImageId: string;
+  assistant_message: string;
+  image_prompt: string | null;
+  response_id: string;
 };
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';

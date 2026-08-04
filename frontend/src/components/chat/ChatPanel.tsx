@@ -15,6 +15,7 @@ type ChatPanelProps = {
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onUpload: (file: File) => void;
+  onStartNewConversation: () => void;
 };
 
 export function ChatPanel({
@@ -29,6 +30,7 @@ export function ChatPanel({
   onPromptChange,
   onSubmit,
   onUpload,
+  onStartNewConversation,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -36,17 +38,28 @@ export function ChatPanel({
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [messages.length]);
 
+  function handleStartNewConversation() {
+    if (isGenerating) {
+      return;
+    }
+    if (window.confirm('開始新對話？目前的圖片與生成工作會保留。')) {
+      onStartNewConversation();
+    }
+  }
+
   return (
     <section className="panel chat-panel">
       <div className="section-header">
         <h2>對話</h2>
-        <span>Prompt to image</span>
+        <button type="button" className="subtle-button" disabled={isGenerating} onClick={handleStartNewConversation}>
+          新對話
+        </button>
       </div>
 
       <div className="chat-messages" aria-live="polite">
         {messages.length === 0 ? (
           <div className="empty-state chat-empty">
-            請輸入要生成的 3D 參考圖片描述，或上傳一張圖片來建立 3D 模型。
+            請輸入要產生的 3D 參考圖片描述，或上傳一張圖片來建立 3D 模型。
           </div>
         ) : (
           messages.map((message) => <ChatMessage key={message.id} message={message} />)

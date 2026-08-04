@@ -29,6 +29,8 @@ class ImageRecord:
     filename: str
     path: Path
     media_type: str
+    source: str
+    parent_image_id: str | None = None
 
 
 class AssetStorage:
@@ -72,13 +74,31 @@ class AssetStorage:
 
     def save_uploaded_image(self, content: bytes, filename: str, content_type: str | None) -> ImageRecord:
         extension = self.validate_image_bytes(content, filename, content_type)
-        return self.save_image_bytes(content, "upload", extension)
+        return self.save_image_bytes(content, "upload", extension, source="uploaded")
 
     def save_generated_image(self, content: bytes) -> ImageRecord:
         self.validate_image_bytes(content, "generated.png", "image/png")
-        return self.save_image_bytes(content, "gpt", ".png")
+        return self.save_image_bytes(content, "gpt", ".png", source="generated")
 
-    def save_image_bytes(self, content: bytes, prefix: str, extension: str) -> ImageRecord:
+    def save_edited_image(self, content: bytes, parent_image_id: str) -> ImageRecord:
+        self.validate_image_bytes(content, "edited.png", "image/png")
+        return self.save_image_bytes(
+            content,
+            "edit",
+            ".png",
+            source="edited",
+            parent_image_id=parent_image_id,
+        )
+
+    def save_image_bytes(
+        self,
+        content: bytes,
+        prefix: str,
+        extension: str,
+        *,
+        source: str = "generated",
+        parent_image_id: str | None = None,
+    ) -> ImageRecord:
         image_id = str(uuid.uuid4())
         filename = f"{prefix}-{image_id}{extension}"
         path = self.images_dir / filename
@@ -88,6 +108,8 @@ class AssetStorage:
             filename=filename,
             path=path,
             media_type=ALLOWED_IMAGE_EXTENSIONS[extension],
+            source=source,
+            parent_image_id=parent_image_id,
         )
         self.images[image_id] = record
         return record

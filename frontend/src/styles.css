@@ -230,6 +230,13 @@ code {
   align-items: baseline;
 }
 
+.subtle-button {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
 .chat-panel {
   display: grid;
   grid-template-rows: auto minmax(320px, 1fr) auto auto;
@@ -371,6 +378,60 @@ code {
   color: #507fa8;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.gallery-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.gallery-header-actions button,
+.image-archive-button {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.archived-gallery {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #d3dce1;
+}
+
+.archived-gallery h3 {
+  margin: 0;
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.image-card[data-archived='true'] {
+  opacity: 0.78;
+}
+
+.image-card:has(.image-editing-overlay) img {
+  filter: brightness(0.65) blur(1px);
+}
+
+.image-editing-overlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.42);
+  color: #ffffff;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 /* Overlaid icon button that opens the ImageLightbox; separate control from
@@ -757,6 +818,24 @@ code {
   border-radius: 8px;
   background: #eef3f1;
   object-fit: contain;
+}
+
+.lightbox-edit-panel {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #d3dce1;
+}
+
+.lightbox-edit-panel h3,
+.lightbox-edit-panel p {
+  margin: 0;
+}
+
+.lightbox-edit-panel textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
 }
 
 @media (max-width: 720px) {
