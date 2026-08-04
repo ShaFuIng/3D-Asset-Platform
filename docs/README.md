@@ -19,6 +19,7 @@
 - Vite + React + TypeScript 分階段前端
 - OpenAI 圖片生成、指定圖片修改與 Multiview GPT Edit
 - 本機圖片上傳、Reference 選擇、隱藏／恢復
+- Video Frame Picker：從本機影片擷取單張 Reference Image
 - Single Image 3D Job、輪詢、GLB 預覽與下載
 - Qwen Front／Left／Back 三視圖生成與 Hunyuan Multiview 3D
 - 單一視角本機重新抽選、GPT 修改、Candidate 接受與版本歷史
@@ -194,6 +195,15 @@ npm run dev
 - `POST /api/images/{source_image_id}/edits`
 - `GET /api/assets/images/{filename}`
 
+### Video Frame Picker
+
+- 路由：`/video-upload`
+- 使用方式：從首頁左欄的 Video Frame Picker panel 進入，選擇本機影片後用時間軸挑選畫面，再按「加入此畫面」。
+- 常見可選影片格式包含 MP4、MOV、WebM；實際播放能力取決於使用者瀏覽器與影片 codec。
+- 影片本身只在瀏覽器本機播放，不進入後端，也不會整支上傳。
+- 擷取出的單張影格會以 PNG 圖片沿用 `POST /api/images/upload` 進入 Asset Library。
+- 成功上傳後，可按「設為 Reference 並前往工作區」使用既有 Workspace 狀態選中該圖片，再由使用者明確選擇 Single 或 Multiview 流程。
+
 ### Single 3D Job
 
 - `POST /api/3d/jobs`
@@ -256,6 +266,7 @@ npm run build
 - Asset Library Trash／Restore／Permanent Delete
 - Reference、Asset Library 與 Multiview Lightbox 的功能隔離
 - Game UI 導覽規則、Recovery stepper 與 Lightbox Set Candidate 錯誤顯示的程式檢查
+- Video Frame Picker 整合後 `npm run typecheck` 與 `npm run build` 通過；仍需以真實手機影片人工驗證各瀏覽器與 codec 相容性
 
 ## 停止服務
 

@@ -2739,7 +2739,7 @@ input::placeholder {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.5fr) minmax(300px, 1fr);
   gap: var(--gui-s5);
-  align-items: stretch;
+  align-items: start;
 }
 
 .home-col {
@@ -2868,6 +2868,113 @@ input::placeholder {
   color: var(--gui-accent-hi);
   font-family: var(--gui-mono);
   font-size: 0.8rem;
+}
+
+.home-video-picker-panel {
+  display: grid;
+  gap: var(--gui-s3);
+  align-content: start;
+}
+
+.home-video-picker-panel h2,
+.home-video-picker-panel p {
+  overflow-wrap: anywhere;
+}
+
+.home-video-picker-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.home-video-picker-link:hover,
+.home-video-picker-link:focus-visible {
+  border-color: var(--gui-accent);
+  color: var(--gui-accent-hi);
+}
+
+/* Video frame picker */
+.video-picker-page {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.video-picker-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.video-picker-source-panel,
+.video-picker-frames-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.video-picker-stage {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.video-picker-source,
+.video-picker-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-0);
+}
+
+.video-picker-canvas {
+  object-fit: contain;
+}
+
+.video-picker-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.video-picker-controls input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.video-picker-filename,
+.video-picker-frame-grid .image-card span {
+  overflow-wrap: anywhere;
+}
+
+.video-picker-frame-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  max-height: none;
+  overflow-x: hidden;
+}
+
+@media (max-width: 720px) {
+  .video-picker-layout,
+  .video-picker-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ===== Center orbital device (pure CSS, decorative) ===== */

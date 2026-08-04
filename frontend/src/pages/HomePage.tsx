@@ -132,7 +132,23 @@ export function HomePage({ backend, openai, comfy }: HomePageProps) {
             )}
           </section>
 
-          <section className="panel home-status-panel stagger" style={staggerStyle(2)}>
+          <section className="panel home-video-picker-panel stagger" style={staggerStyle(2)}>
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">VIDEO FRAME PICKER</p>
+                <h2>從影片擷取 Reference Image</h2>
+              </div>
+            </div>
+            <p className="hint">
+              選擇本機 MP4、MOV、WebM 等影片，利用時間軸挑選需要的畫面，將單張影格加入資產庫並設為 3D
+              生成的 Reference。
+            </p>
+            <Link className="home-video-picker-link" to="/video-upload">
+              開啟影片擷取 →
+            </Link>
+          </section>
+
+          <section className="panel home-status-panel stagger" style={staggerStyle(3)}>
             <div className="section-header">
               <h2>服務狀態</h2>
               <span>SERVICES</span>

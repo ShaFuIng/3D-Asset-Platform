@@ -19,6 +19,7 @@
 - [2026-07-31：單圖轉 3D MVP 整合與驗證](./2026-07-31-mvp-integration.md)
 - [2026-08-04：Asset Library 與 Multiview Guided Regeneration](./2026-08-04-asset-library-and-multiview-regeneration.md)
 - [2026-08-05：Game UI Redesign 與階段導覽整理](./2026-08-05-game-ui-redesign.md)
+- [2026-08-05：Video Frame Picker 整合](./2026-08-05-video-frame-picker-integration.md)
 
 ## 目前交接重點
 
@@ -28,6 +29,7 @@
 - Multiview Lightbox 可瀏覽 Initial／Local Reroll／GPT Edit 歷史版本，設定 Candidate 後仍需明確 Accept。
 - Asset Library 會盤點 `storage/images` 與 `storage/models`，支援預覽、下載、Trash、Restore 與安全永久刪除。
 - 前端已加入第一版 Game UI：首頁三區布局、orbital workspace 入口、暗色終端風格、統一五階段導覽與 recovery stepper opt-out。
+- Video Frame Picker 已整合進 Game UI 首頁左欄獨立 panel 與 `/video-upload` route；原始功能由 kila606 在 `feat/video-frame-picker` 開發。
 - `frontend/src/navigation/stageNav.ts` 是 Home 與 StageShell 共用的階段導覽規則來源，修改導覽前需先檢查此檔。
 - Job Store 與 Multiview Version History 仍位於記憶體；FastAPI 重啟後不恢復。
 - Asset Catalog 使用 SQLite 保存資產 metadata，但不等同 Job persistence。

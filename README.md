@@ -18,6 +18,10 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
   - 指定圖片修改，原圖與修改版本分開保存
   - Multiview 單一視角 GPT Image Edit
 - 本機圖片上傳、Reference 選擇、隱藏／恢復與新對話
+- Video Frame Picker
+  - 從本機 MP4／MOV／WebM 等影片選擇時間點並擷取 Reference Image
+  - 完整影片不會上傳；只有使用者選取的單張影格會進入 Asset Library
+  - 成功擷取的影格可設為 Reference，沿用現有 Single／Multiview 流程
 - Single Image → ComfyUI Hunyuan3D → GLB 流程
 - Multiview Reference → Qwen Front／Left／Back → Hunyuan Multiview GLB 流程
 - Multiview 單視角調整
@@ -63,6 +67,9 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
   - Vite build 仍有既有 chunk size warning
 - 程式檢查：
   - Game UI 導覽規則、Recovery stepper 與 Lightbox Set Candidate 錯誤顯示的程式檢查
+- Video Frame Picker 整合：
+  - `npm run typecheck` 與 `npm run build` 通過
+  - 影片僅於瀏覽器本機播放，擷取影格沿用 `POST /api/images/upload`
 
 ## 專案目錄
 
