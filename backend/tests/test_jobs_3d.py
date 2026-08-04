@@ -252,6 +252,7 @@ def test_comfyui_timeout_updates_job_failed(client: TestClient, image_id: str) -
             model_path,
             client.app.state.job_store,
             FakeComfyClient(timeout=True),
+            client.app.state.storage,
         )
         return await client.app.state.job_store.get(job.job_id)
 
@@ -261,16 +262,25 @@ def test_comfyui_timeout_updates_job_failed(client: TestClient, image_id: str) -
 
 
 def test_run_3d_job_succeeds(client: TestClient, image_id: str) -> None:
+    usage_lease = client.app.state.asset_usage_guard.acquire(
+        image_id,
+        owner="test-single-job",
+        reason="single_reference_image",
+    )
+
     async def run():
         image = client.app.state.storage.get_image_by_id(image_id)
         job = await client.app.state.job_store.create()
         model_path = client.app.state.storage.model_path_for_job(job.job_id)
+        assert client.app.state.asset_usage_guard.is_in_use(image_id)
         await run_3d_job(
             job.job_id,
             image,
             model_path,
             client.app.state.job_store,
             FakeComfyClient(),
+            client.app.state.storage,
+            usage_lease,
         )
         return await client.app.state.job_store.get(job.job_id)
 
@@ -278,3 +288,55 @@ def test_run_3d_job_succeeds(client: TestClient, image_id: str) -> None:
     assert job.status == JobStatus.succeeded
     assert job.prompt_id == "prompt-123"
     assert job.model_path.exists()
+    assets = client.app.state.asset_catalog.find_references(image_id)
+    models = [asset for asset in assets if asset.asset_type == "model"]
+    assert len(models) == 1
+    assert models[0].pipeline == "single"
+    assert models[0].model_variant == "single"
+    assert models[0].related_job_id == job.job_id
+    assert not client.app.state.asset_usage_guard.is_in_use(image_id)
+
+
+def test_queued_single_job_does_not_register_model_asset(client: TestClient, image_id: str) -> None:
+    response = client.post("/api/3d/jobs", json={"image_id": image_id})
+    assert response.status_code == 202
+
+    models = [
+        asset
+        for asset in client.app.state.asset_catalog.find_references(image_id)
+        if asset.asset_type == "model"
+    ]
+    assert models == []
+    assert not client.app.state.asset_usage_guard.is_in_use(image_id)
+
+
+def test_single_job_fails_when_model_catalog_registration_fails(client: TestClient, image_id: str) -> None:
+    class FailingCatalog:
+        def relative_path_for(self, path):
+            return "models/model.glb"
+
+        def upsert_asset(self, record):
+            raise RuntimeError("database unavailable")
+
+    async def run():
+        image = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.job_store.create()
+        model_path = client.app.state.storage.model_path_for_job(job.job_id)
+        original = client.app.state.storage.asset_catalog
+        client.app.state.storage.asset_catalog = FailingCatalog()
+        try:
+            await run_3d_job(
+                job.job_id,
+                image,
+                model_path,
+                client.app.state.job_store,
+                FakeComfyClient(),
+                client.app.state.storage,
+            )
+        finally:
+            client.app.state.storage.asset_catalog = original
+        return await client.app.state.job_store.get(job.job_id)
+
+    job = asyncio.run(run())
+    assert job.status == JobStatus.failed
+    assert job.model_path is None

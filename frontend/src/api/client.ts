@@ -5,9 +5,13 @@ import type {
   ComfyHealthResponse,
   Create3DJobResponse,
   CreateMultiviewJobResponse,
+  DeleteLibraryAssetResponse,
   EditImageResponse,
   GenerateImageResponse,
   JobResponse,
+  LibraryAsset,
+  LibraryAssetListResponse,
+  LibraryAssetQuery,
   MultiviewJobResponse,
   MultiviewModelJobResponse,
   MultiviewName,
@@ -184,6 +188,48 @@ export async function getMultiviewModelJob(
     { signal },
   );
   return toMultiviewModelJob(data);
+}
+
+export async function getLibraryAssets(
+  query: LibraryAssetQuery = {},
+  signal?: AbortSignal,
+): Promise<LibraryAssetListResponse> {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value));
+    }
+  });
+  const suffix = params.toString();
+  return requestJson(`/api/library/assets${suffix ? `?${suffix}` : ''}`, { signal });
+}
+
+export async function getLibraryAsset(assetId: string, signal?: AbortSignal): Promise<LibraryAsset> {
+  return requestJson(`/api/library/assets/${encodeURIComponent(assetId)}`, { signal });
+}
+
+export async function trashLibraryAsset(assetId: string, signal?: AbortSignal): Promise<LibraryAsset> {
+  return requestJson(`/api/library/assets/${encodeURIComponent(assetId)}/trash`, {
+    method: 'POST',
+    signal,
+  });
+}
+
+export async function restoreLibraryAsset(assetId: string, signal?: AbortSignal): Promise<LibraryAsset> {
+  return requestJson(`/api/library/assets/${encodeURIComponent(assetId)}/restore`, {
+    method: 'POST',
+    signal,
+  });
+}
+
+export async function deleteLibraryAsset(
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<DeleteLibraryAssetResponse> {
+  return requestJson(`/api/library/assets/${encodeURIComponent(assetId)}`, {
+    method: 'DELETE',
+    signal,
+  });
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {

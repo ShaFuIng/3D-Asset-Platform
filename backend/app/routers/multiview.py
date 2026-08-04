@@ -38,18 +38,28 @@ async def create_multiview_job(
     request.app.state.qwen_multiview_workflow.prepare_three_view_workflow("preflight.png")
     job = await request.app.state.multiview_job_store.create(reference, payload.provider)
     if not getattr(request.app.state, "disable_background_jobs", False):
-        task = asyncio.create_task(
-            run_multiview_image_job(
-                job.job_id,
-                reference,
-                request.app.state.multiview_job_store,
-                request.app.state.comfy_client,
-                request.app.state.qwen_multiview_workflow,
-                request.app.state.storage,
-            )
+        usage_lease = request.app.state.asset_usage_guard.acquire(
+            reference.image_id,
+            owner=f"multiview-image-job:{job.job_id}",
+            reason="multiview_reference_image",
         )
-        request.app.state.background_tasks.add(task)
-        task.add_done_callback(request.app.state.background_tasks.discard)
+        try:
+            task = asyncio.create_task(
+                run_multiview_image_job(
+                    job.job_id,
+                    reference,
+                    request.app.state.multiview_job_store,
+                    request.app.state.comfy_client,
+                    request.app.state.qwen_multiview_workflow,
+                    request.app.state.storage,
+                    usage_lease,
+                )
+            )
+            request.app.state.background_tasks.add(task)
+            task.add_done_callback(request.app.state.background_tasks.discard)
+        except Exception:
+            usage_lease.release()
+            raise
     return CreateMultiviewJobResponse(
         job_id=job.job_id,
         status=job.status,
@@ -101,17 +111,32 @@ async def create_multiview_model_job(request: Request, job_id: str) -> Multiview
     )
     job = await request.app.state.multiview_job_store.start_model_job(job_id)
     if not getattr(request.app.state, "disable_background_jobs", False):
-        task = asyncio.create_task(
-            run_multiview_model_job(
-                job.job_id,
-                request.app.state.multiview_job_store,
-                request.app.state.comfy_client,
-                request.app.state.hunyuan_multiview_workflow,
-                request.app.state.storage,
-            )
+        asset_ids = [job.reference_image.image_id]
+        for view in VIEW_ORDER:
+            image = job.views[view].current_image
+            if image is not None:
+                asset_ids.append(image.image_id)
+        usage_lease = request.app.state.asset_usage_guard.acquire_many(
+            asset_ids,
+            owner=f"multiview-model-job:{job.job_id}",
+            reason="multiview_model_inputs",
         )
-        request.app.state.background_tasks.add(task)
-        task.add_done_callback(request.app.state.background_tasks.discard)
+        try:
+            task = asyncio.create_task(
+                run_multiview_model_job(
+                    job.job_id,
+                    request.app.state.multiview_job_store,
+                    request.app.state.comfy_client,
+                    request.app.state.hunyuan_multiview_workflow,
+                    request.app.state.storage,
+                    usage_lease,
+                )
+            )
+            request.app.state.background_tasks.add(task)
+            task.add_done_callback(request.app.state.background_tasks.discard)
+        except Exception:
+            usage_lease.release()
+            raise
     return _model_job_response(job)
 
 

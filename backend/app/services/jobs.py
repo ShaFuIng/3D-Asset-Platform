@@ -71,6 +71,8 @@ async def run_3d_job(
     model_path: Path,
     store: JobStore,
     comfy: ComfyClient,
+    asset_storage=None,
+    usage_lease=None,
 ) -> None:
     try:
         await store.update(job_id, status=JobStatus.running, message="3D generation job is running.")
@@ -80,6 +82,15 @@ async def run_3d_job(
         await store.update(job_id, prompt_id=prompt_id)
         output = await comfy.wait_for_glb_output(prompt_id)
         await comfy.download_output(output, model_path)
+        if asset_storage is not None:
+            asset_storage.register_model_file(
+                model_path,
+                source="generated",
+                pipeline="single",
+                model_variant="single",
+                related_job_id=job_id,
+                reference_image_id=image.image_id,
+            )
         await store.update(
             job_id,
             status=JobStatus.succeeded,
@@ -92,6 +103,9 @@ async def run_3d_job(
             status=JobStatus.failed,
             message=_safe_failure_message(exc),
         )
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
 
 
 def _safe_failure_message(exc: Exception) -> str:

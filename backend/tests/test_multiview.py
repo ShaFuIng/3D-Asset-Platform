@@ -334,6 +334,12 @@ def test_run_multiview_image_job_saves_distinct_assets(client: TestClient, image
     assert job.status == JobStatus.succeeded
     assert {slot.current_image.image_id for slot in job.views.values()} != {image_id}
     assert len({slot.current_image.image_id for slot in job.views.values()}) == 3
+    for view, slot in job.views.items():
+        asset = client.app.state.asset_catalog.get_asset(slot.current_image.image_id)
+        assert asset.source == "multiview"
+        assert asset.view_name == view
+        assert asset.related_job_id == job.job_id
+        assert asset.reference_image_id == image_id
 
 
 def test_run_multiview_model_job_saves_two_models(client: TestClient, image_id: str) -> None:
@@ -350,17 +356,76 @@ def test_run_multiview_model_job_saves_two_models(client: TestClient, image_id: 
         for view in ("front", "left", "back"):
             await client.app.state.multiview_job_store.accept_view(job.job_id, view)
         await client.app.state.multiview_job_store.start_model_job(job.job_id)
+        guarded_ids = [image_id, *(record.image_id for record in records.values())]
+        usage_lease = client.app.state.asset_usage_guard.acquire_many(
+            guarded_ids,
+            owner="test-multiview-model",
+            reason="multiview_model_inputs",
+        )
+        assert all(client.app.state.asset_usage_guard.is_in_use(asset_id) for asset_id in guarded_ids)
         await run_multiview_model_job(
             job.job_id,
             client.app.state.multiview_job_store,
             FakeMultiviewComfy(client.app.state.settings),
             client.app.state.hunyuan_multiview_workflow,
             client.app.state.storage,
+            usage_lease,
         )
-        return await client.app.state.multiview_job_store.get(job.job_id)
+        return await client.app.state.multiview_job_store.get(job.job_id), guarded_ids
 
-    job = asyncio.run(run())
+    job, guarded_ids = asyncio.run(run())
 
     assert job.model_job.status == JobStatus.succeeded
     assert job.model_job.geometry_path.exists()
     assert job.model_job.textured_path.exists()
+    assert all(not client.app.state.asset_usage_guard.is_in_use(asset_id) for asset_id in guarded_ids)
+    models = [
+        asset
+        for asset in client.app.state.asset_catalog.find_references(image_id)
+        if asset.asset_type == "model"
+    ]
+    assert {model.model_variant for model in models} == {"geometry", "textured"}
+    assert {model.pipeline for model in models} == {"multiview"}
+    assert {model.related_job_id for model in models} == {job.job_id}
+
+
+def test_run_multiview_model_job_keeps_geometry_asset_when_textured_download_fails(
+    client: TestClient, image_id: str
+) -> None:
+    prepare_multiview_app(client)
+
+    class TexturedFailingComfy(FakeMultiviewComfy):
+        async def download_output(self, output, destination):
+            if "textured" in output["filename"].lower():
+                raise RuntimeError("download failed")
+            destination.write_bytes(GLB_BYTES)
+
+    async def run():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = {
+            view: client.app.state.storage.save_image_bytes(PNG_BYTES, view, ".png")
+            for view in ("front", "left", "back")
+        }
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        for view in ("front", "left", "back"):
+            await client.app.state.multiview_job_store.accept_view(job.job_id, view)
+        await client.app.state.multiview_job_store.start_model_job(job.job_id)
+        await run_multiview_model_job(
+            job.job_id,
+            client.app.state.multiview_job_store,
+            TexturedFailingComfy(client.app.state.settings),
+            client.app.state.hunyuan_multiview_workflow,
+            client.app.state.storage,
+        )
+        return await client.app.state.multiview_job_store.get(job.job_id)
+
+    job = asyncio.run(run())
+    models = [
+        asset
+        for asset in client.app.state.asset_catalog.find_references(image_id)
+        if asset.asset_type == "model" and asset.related_job_id == job.job_id
+    ]
+
+    assert job.model_job.status == JobStatus.failed
+    assert [model.model_variant for model in models] == ["geometry"]

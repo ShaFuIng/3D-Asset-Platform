@@ -128,6 +128,8 @@ export type WorkspaceContextValue = {
   startNewConversation: () => void;
   archiveImage: (imageId: string) => void;
   restoreImage: (imageId: string) => void;
+  importLibraryImageAsReference: (image: ImageAsset) => void;
+  forgetWorkspaceImage: (imageId: string) => void;
   setEditPrompt: (imageId: string, value: string) => void;
   editImage: (sourceImageId: string, prompt: string) => Promise<ImageAsset | undefined>;
 
@@ -479,6 +481,61 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (!current[imageId]) {
         return current;
       }
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+  }
+
+  function importLibraryImageAsReference(image: ImageAsset) {
+    setImages((current) => {
+      if (current.some((item) => item.image_id === image.image_id)) {
+        return current;
+      }
+      return [image, ...current];
+    });
+    setSelectedImageId(image.image_id);
+  }
+
+  function forgetWorkspaceImage(imageId: string) {
+    setImages((current) => current.filter((image) => image.image_id !== imageId));
+    setSelectedImageId((current) => {
+      if (current !== imageId) {
+        return current;
+      }
+      return images.find((image) => image.image_id !== imageId && !archivedImageIds[image.image_id])?.image_id;
+    });
+    setArchivedImageIds((current) => {
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+    setEditPromptByImageId((current) => {
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+    setImageEditErrors((current) => {
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+    setEditingImageIds((current) => {
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+    setPipelineByImageId((current) => {
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+    setSingleJobsByImageId((current) => {
+      const next = { ...current };
+      delete next[imageId];
+      return next;
+    });
+    setMultiviewByImageId((current) => {
       const next = { ...current };
       delete next[imageId];
       return next;
@@ -849,6 +906,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     startNewConversation,
     archiveImage,
     restoreImage,
+    importLibraryImageAsReference,
+    forgetWorkspaceImage,
     setEditPrompt,
     editImage,
     pipelineByImageId,

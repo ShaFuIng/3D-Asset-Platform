@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .asset_catalog import AssetCatalog
+from .asset_usage import AssetUsageGuard
 from .config import Settings, settings
 from .errors import register_error_handlers
-from .routers import images, jobs_3d, multiview
+from .routers import images, jobs_3d, library, multiview
 from .services.comfy_client import ComfyClient, ComfyClientError
 from .services.jobs import JobStore
 from .services.multiview_jobs import MultiviewJobStore
@@ -15,7 +17,10 @@ from .storage import AssetStorage
 def create_app(app_settings: Settings = settings) -> FastAPI:
     app = FastAPI(title="3D Asset Platform API")
     app.state.settings = app_settings
-    app.state.storage = AssetStorage(app_settings)
+    app.state.asset_catalog = AssetCatalog(app_settings.storage_images_dir.parent)
+    app.state.asset_catalog.reconcile(app_settings.storage_images_dir, app_settings.storage_models_dir)
+    app.state.storage = AssetStorage(app_settings, app.state.asset_catalog)
+    app.state.asset_usage_guard = AssetUsageGuard()
     app.state.job_store = JobStore()
     app.state.multiview_job_store = MultiviewJobStore()
     app.state.background_tasks = set()
@@ -35,12 +40,13 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
             "http://127.0.0.1:5173",
         ],
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
     register_error_handlers(app)
     app.include_router(images.router)
     app.include_router(jobs_3d.router)
+    app.include_router(library.router)
     app.include_router(multiview.router)
     register_health_routes(app)
     return app

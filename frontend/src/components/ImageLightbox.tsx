@@ -10,6 +10,7 @@ export type LightboxImage = {
   filename?: string;
   source?: string;
   parentImageId?: string;
+  technicalItems?: Array<[label: string, value: string | null | undefined]>;
 };
 
 type ImageLightboxProps = {
@@ -56,12 +57,14 @@ export function ImageLightbox({
           <div className="lightbox-image-pane">
             <img src={resolveApiUrl(image.url)} alt="放大檢視的圖片" />
             <TechnicalDetails
-              items={[
-                ['image_id', image.imageId],
-                ['filename', image.filename],
-                ['source', image.source],
-                ['parent_image_id', image.parentImageId],
-              ]}
+              items={
+                image.technicalItems ?? [
+                  ['image_id', image.imageId],
+                  ['filename', image.filename],
+                  ['source', image.source],
+                  ['parent_image_id', image.parentImageId],
+                ]
+              }
             />
             {editControls && (
               <form

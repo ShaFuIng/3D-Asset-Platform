@@ -10,8 +10,11 @@ storage/images/*
 storage/models/*
 !storage/images/.gitkeep
 !storage/models/.gitkeep
+/storage/assets.db
+/storage/assets.db-shm
+/storage/assets.db-wal
+/storage/assets.db-journal
 
 # Local tool caches
 .vite/
 .pytest_cache/
-

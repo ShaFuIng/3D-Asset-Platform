@@ -11,6 +11,7 @@ import { WorkspaceProvider } from './context/WorkspaceContext';
 import { GenerateConfirmPage } from './pages/GenerateConfirmPage';
 import { HomePage } from './pages/HomePage';
 import { JobProgressPage } from './pages/JobProgressPage';
+import { LibraryPage } from './pages/LibraryPage';
 import { ModeSelectPage } from './pages/ModeSelectPage';
 import { MultiviewStagePage } from './pages/MultiviewStagePage';
 import { ReferenceStagePage } from './pages/ReferenceStagePage';
@@ -68,6 +69,7 @@ export default function App() {
       <WorkspaceProvider>
         <Routes>
           <Route path="/" element={<HomePage backend={backend} openai={openai} comfy={comfy} />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/reference" element={<ReferenceStagePage openai={openai} />} />
           <Route path="/mode" element={<ModeSelectPage />} />
           <Route path="/views" element={<MultiviewStagePage comfy={comfy} />} />

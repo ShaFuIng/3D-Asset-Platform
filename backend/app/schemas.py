@@ -138,3 +138,46 @@ class MultiviewModelJobResponse(BaseModel):
     prompt_id: str | None
     geometry_model: MultiviewModelRef
     textured_model: MultiviewModelRef
+
+
+LibraryAssetType = Literal["image", "model"]
+LibraryState = Literal["active", "trash"]
+LibrarySort = Literal[
+    "created_at_desc",
+    "created_at_asc",
+    "filename_asc",
+    "filename_desc",
+    "size_desc",
+    "size_asc",
+]
+
+
+class LibraryAssetResponse(BaseModel):
+    asset_id: str
+    asset_type: LibraryAssetType
+    content_url: str
+    filename: str
+    media_type: str
+    source: str
+    created_at: str
+    deleted_at: str | None
+    size_bytes: int
+    status: str
+    parent_image_id: str | None
+    pipeline: str | None
+    model_variant: str | None
+    related_job_id: str | None
+    reference_image_id: str | None
+    view_name: str | None
+    original_filename: str | None
+
+
+class LibraryAssetListResponse(BaseModel):
+    items: list[LibraryAssetResponse]
+    page: int
+    page_size: int
+    total: int
+
+
+class DeleteLibraryAssetResponse(BaseModel):
+    deleted_asset_id: str

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { resolveApiUrl } from '../api/client';
+import { useEffect, useState } from 'react';
+import { getLibraryAssets, resolveApiUrl } from '../api/client';
 import { useWorkspace } from '../context/WorkspaceContext';
 import type { ServiceHealthState } from '../types/api';
 
@@ -18,6 +19,44 @@ function statusLabel(state: ServiceHealthState): string {
 export function HomePage({ backend, openai, comfy }: HomePageProps) {
   const { images, selectedImageId, singleJobsByImageId, multiviewByImageId, hasActiveJobs } =
     useWorkspace();
+  const [libraryCounts, setLibraryCounts] = useState<{
+    images: number;
+    models: number;
+    trash: number;
+    isLoading: boolean;
+    error?: string;
+  }>({ images: 0, models: 0, trash: 0, isLoading: true });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLibraryCounts((current) => ({ ...current, isLoading: true, error: undefined }));
+    void Promise.all([
+      getLibraryAssets({ state: 'active', type: 'image', page_size: 1 }, controller.signal),
+      getLibraryAssets({ state: 'active', type: 'model', page_size: 1 }, controller.signal),
+      getLibraryAssets({ state: 'trash', page_size: 1 }, controller.signal),
+    ])
+      .then(([imageData, modelData, trashData]) => {
+        setLibraryCounts({
+          images: imageData.total,
+          models: modelData.total,
+          trash: trashData.total,
+          isLoading: false,
+        });
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        setLibraryCounts({
+          images: 0,
+          models: 0,
+          trash: 0,
+          isLoading: false,
+          error: 'Asset Library unavailable.',
+        });
+      });
+    return () => controller.abort();
+  }, []);
 
   const selectedImage = images.find((image) => image.image_id === selectedImageId);
 
@@ -69,6 +108,36 @@ export function HomePage({ backend, openai, comfy }: HomePageProps) {
             <small>{statusLabel(comfy)}</small>
           </div>
         </div>
+      </section>
+
+      <section className="panel home-library-panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">ASSET LIBRARY</p>
+            <h2>資產庫</h2>
+          </div>
+          <Link to="/library">開啟資產庫 →</Link>
+        </div>
+        {libraryCounts.isLoading ? (
+          <p className="hint">Loading asset counts...</p>
+        ) : libraryCounts.error ? (
+          <p className="hint error">{libraryCounts.error}</p>
+        ) : (
+          <div className="library-count-grid">
+            <div>
+              <strong>{libraryCounts.images.toLocaleString()}</strong>
+              <span>Images</span>
+            </div>
+            <div>
+              <strong>{libraryCounts.models.toLocaleString()}</strong>
+              <span>Models</span>
+            </div>
+            <div>
+              <strong>{libraryCounts.trash.toLocaleString()}</strong>
+              <span>Trash</span>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="panel home-work-panel">

@@ -242,6 +242,7 @@ async def run_multiview_image_job(
     comfy: ComfyClient,
     qwen: QwenMultiviewWorkflow,
     asset_storage,
+    usage_lease=None,
 ) -> None:
     try:
         await store.update_images_running(job_id)
@@ -254,10 +255,21 @@ async def run_multiview_image_job(
         images = {}
         for view, output in outputs.items():
             content = await comfy.download_output_bytes(output.as_dict())
-            images[view] = asset_storage.save_image_bytes(content, f"qwen-{view}", ".png")
+            images[view] = asset_storage.save_image_bytes(
+                content,
+                f"qwen-{view}",
+                ".png",
+                source="multiview",
+                related_job_id=job_id,
+                reference_image_id=reference.image_id,
+                view_name=view,
+            )
         await store.set_images_succeeded(job_id, images)
     except (ApiError, ComfyClientError, Exception) as exc:
         await store.set_failed(job_id, _safe_failure_message(exc))
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
 
 
 async def run_multiview_model_job(
@@ -266,6 +278,7 @@ async def run_multiview_model_job(
     comfy: ComfyClient,
     hunyuan: HunyuanMultiviewWorkflow,
     asset_storage,
+    usage_lease=None,
 ) -> None:
     try:
         job = await store.get(job_id)
@@ -295,7 +308,23 @@ async def run_multiview_model_job(
         geometry_path = asset_storage.models_dir / f"{job_id}-geometry.glb"
         textured_path = asset_storage.models_dir / f"{job_id}-textured.glb"
         await comfy.download_output(outputs["geometry"].as_dict(), geometry_path)
+        asset_storage.register_model_file(
+            geometry_path,
+            source="generated",
+            pipeline="multiview",
+            model_variant="geometry",
+            related_job_id=job_id,
+            reference_image_id=job.reference_image.image_id,
+        )
         await comfy.download_output(outputs["textured"].as_dict(), textured_path)
+        asset_storage.register_model_file(
+            textured_path,
+            source="generated",
+            pipeline="multiview",
+            model_variant="textured",
+            related_job_id=job_id,
+            reference_image_id=job.reference_image.image_id,
+        )
         await store.update_model_job(
             job_id,
             status=JobStatus.succeeded,
@@ -309,6 +338,9 @@ async def run_multiview_model_job(
             status=JobStatus.failed,
             message=_safe_failure_message(exc),
         )
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
 
 
 async def _wait_for_history(comfy: ComfyClient, prompt_id: str) -> dict:

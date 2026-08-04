@@ -22,17 +22,28 @@ async def create_3d_job(request: Request, payload: Create3DJobRequest) -> Create
     job = await request.app.state.job_store.create()
     model_path = request.app.state.storage.model_path_for_job(job.job_id)
     if not getattr(request.app.state, "disable_background_jobs", False):
-        task = asyncio.create_task(
-            run_3d_job(
-                job.job_id,
-                image,
-                model_path,
-                request.app.state.job_store,
-                request.app.state.comfy_client,
-            )
+        usage_lease = request.app.state.asset_usage_guard.acquire(
+            image.image_id,
+            owner=f"single-job:{job.job_id}",
+            reason="single_reference_image",
         )
-        request.app.state.background_tasks.add(task)
-        task.add_done_callback(request.app.state.background_tasks.discard)
+        try:
+            task = asyncio.create_task(
+                run_3d_job(
+                    job.job_id,
+                    image,
+                    model_path,
+                    request.app.state.job_store,
+                    request.app.state.comfy_client,
+                    request.app.state.storage,
+                    usage_lease,
+                )
+            )
+            request.app.state.background_tasks.add(task)
+            task.add_done_callback(request.app.state.background_tasks.discard)
+        except Exception:
+            usage_lease.release()
+            raise
     return Create3DJobResponse(
         job_id=job.job_id,
         status=job.status,

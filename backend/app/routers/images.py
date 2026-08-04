@@ -79,13 +79,18 @@ async def edit_image(
     payload: EditImageRequest,
 ) -> EditedImageResponse:
     source_record = request.app.state.storage.get_image_by_id(source_image_id)
-    source_bytes = source_record.path.read_bytes()
-    image_bytes, image_prompt, response_id = await request.app.state.openai_client.edit_image(
-        source_bytes,
-        source_record.media_type,
-        payload.prompt,
-    )
-    record = request.app.state.storage.save_edited_image(image_bytes, source_image_id)
+    with request.app.state.asset_usage_guard.acquire(
+        source_image_id,
+        owner=f"image-edit:{source_image_id}",
+        reason="image_edit_source",
+    ):
+        source_bytes = source_record.path.read_bytes()
+        image_bytes, image_prompt, response_id = await request.app.state.openai_client.edit_image(
+            source_bytes,
+            source_record.media_type,
+            payload.prompt,
+        )
+        record = request.app.state.storage.save_edited_image(image_bytes, source_image_id)
     return EditedImageResponse(
         image_id=record.image_id,
         filename=record.filename,

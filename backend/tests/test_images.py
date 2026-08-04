@@ -16,6 +16,10 @@ def test_upload_valid_png(client: TestClient) -> None:
     assert data["filename"].startswith("upload-")
     assert data["filename"].endswith(".png")
     assert data["url"] == f"/api/assets/images/{data['filename']}"
+    asset = client.app.state.asset_catalog.get_asset(data["image_id"])
+    assert asset.source == "uploaded"
+    assert asset.original_filename == "asset.png"
+    assert asset.asset_type == "image"
 
 
 @pytest.mark.parametrize(
@@ -77,6 +81,9 @@ def test_generate_image_success(client: TestClient) -> None:
     assert data["assistant_message"] == "已依照你的需求生成圖片。"
     assert data["image_prompt"] == "A revised prompt."
     assert data["response_id"] == "response-123"
+    asset = client.app.state.asset_catalog.get_asset(data["image_id"])
+    assert asset.source == "generated"
+    assert asset.parent_image_id is None
 
 
 def test_generate_image_forwards_previous_response_id(client: TestClient) -> None:
@@ -148,6 +155,11 @@ def test_uploaded_image_can_be_edited(client: TestClient) -> None:
     assert data["assistant_message"] == "已依照你的要求產生修改版本。"
     assert data["image_prompt"] == "An edited prompt."
     assert data["response_id"] == "response-edit-123"
+    asset = client.app.state.asset_catalog.get_asset(data["image_id"])
+    source_asset = client.app.state.asset_catalog.get_asset(upload["image_id"])
+    assert asset.source == "edited"
+    assert asset.parent_image_id == upload["image_id"]
+    assert source_asset.asset_id != asset.asset_id
     assert client.get(data["url"]).status_code == 200
     source_response = client.get(upload["url"])
     assert source_response.status_code == 200
@@ -216,6 +228,23 @@ def test_edit_openai_failure_returns_safe_error(client: TestClient, image_id: st
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "openai_request_failed"
+
+
+def test_edit_marks_source_image_in_use(client: TestClient, image_id: str) -> None:
+    class GuardCheckingOpenAIClient(FakeOpenAIClient):
+        async def edit_image(self, source_bytes, source_media_type, prompt):
+            assert client.app.state.asset_usage_guard.is_in_use(image_id)
+            return await super().edit_image(source_bytes, source_media_type, prompt)
+
+    client.app.state.openai_client = GuardCheckingOpenAIClient()
+
+    response = client.post(
+        f"/api/images/{image_id}/edits",
+        json={"prompt": "Make a small change."},
+    )
+
+    assert response.status_code == 201
+    assert not client.app.state.asset_usage_guard.is_in_use(image_id)
 
 
 def test_edited_image_can_be_edited_again(client: TestClient, image_id: str) -> None:

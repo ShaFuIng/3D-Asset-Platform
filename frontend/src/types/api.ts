@@ -148,3 +148,55 @@ export type ServiceHealthState = {
   status: ServiceStatus;
   message?: string;
 };
+
+export type LibraryAssetType = 'image' | 'model';
+export type LibraryAssetState = 'active' | 'trash';
+export type LibraryAssetSort =
+  | 'created_at_desc'
+  | 'created_at_asc'
+  | 'filename_asc'
+  | 'filename_desc'
+  | 'size_desc'
+  | 'size_asc';
+
+export type LibraryAsset = {
+  asset_id: string;
+  asset_type: LibraryAssetType;
+  content_url: string;
+  filename: string;
+  media_type: string;
+  source: string;
+  created_at: string;
+  deleted_at: string | null;
+  size_bytes: number;
+  status: 'available' | 'missing';
+  parent_image_id: string | null;
+  pipeline: string | null;
+  model_variant: string | null;
+  related_job_id: string | null;
+  reference_image_id: string | null;
+  view_name: string | null;
+  original_filename: string | null;
+};
+
+export type LibraryAssetQuery = {
+  type?: LibraryAssetType;
+  state?: LibraryAssetState;
+  source?: string;
+  pipeline?: string;
+  search?: string;
+  sort?: LibraryAssetSort;
+  page?: number;
+  page_size?: number;
+};
+
+export type LibraryAssetListResponse = {
+  items: LibraryAsset[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export type DeleteLibraryAssetResponse = {
+  deleted_asset_id: string;
+};
