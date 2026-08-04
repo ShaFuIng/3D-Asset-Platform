@@ -14,11 +14,17 @@ from ..schemas import (
     MultiviewModelJobResponse,
     MultiviewModelRef,
     MultiviewSlotResponse,
+    MultiviewViewVersionResponse,
+    RegenerateMultiviewViewRequest,
+    RegenerateStrategy,
+    SetMultiviewCandidateRequest,
 )
 from ..services.multiview_jobs import (
     MultiviewJob,
     run_multiview_image_job,
     run_multiview_model_job,
+    run_multiview_view_openai_edit_job,
+    run_multiview_view_regeneration_job,
 )
 from ..services.multiview_workflows import VIEW_ORDER
 
@@ -71,7 +77,7 @@ async def create_multiview_job(
 @router.get("/api/multiview/jobs/{job_id}", response_model=MultiviewJobResponse)
 async def get_multiview_job(request: Request, job_id: str) -> MultiviewJobResponse:
     job = await _get_job(request, job_id)
-    return _job_response(job)
+    return _job_response(request, job)
 
 
 @router.post(
@@ -82,19 +88,108 @@ async def accept_multiview_view(request: Request, job_id: str, view: str) -> Mul
     if view not in VIEW_ORDER:
         raise ApiError(400, "invalid_view", "View must be front, left, or back.")
     job = await request.app.state.multiview_job_store.accept_view(job_id, view)
-    return _job_response(job)
+    return _job_response(request, job)
 
 
-@router.post("/api/multiview/jobs/{job_id}/views/{view}/regenerate")
-async def regenerate_multiview_view(_request: Request, job_id: str, view: str) -> Response:
-    _ = job_id
+@router.post(
+    "/api/multiview/jobs/{job_id}/views/{view}/candidate",
+    response_model=MultiviewJobResponse,
+)
+async def set_multiview_view_candidate(
+    request: Request,
+    job_id: str,
+    view: str,
+    payload: SetMultiviewCandidateRequest,
+) -> MultiviewJobResponse:
     if view not in VIEW_ORDER:
         raise ApiError(400, "invalid_view", "View must be front, left, or back.")
-    raise ApiError(
-        501,
-        "regenerate_not_implemented",
-        "Single-view regenerate needs ComfyUI validation that one prompt returns exactly one image.",
+    job = await _get_job(request, job_id)
+    slot = job.views[view]
+    if not any(version.image.image_id == payload.image_id for version in slot.versions):
+        raise ApiError(400, "version_not_found", "Image is not a version of this view.")
+    _validate_candidate_asset(request, payload.image_id, job_id, view)
+    updated = await request.app.state.multiview_job_store.set_view_candidate_from_version(
+        job_id,
+        view,
+        payload.image_id,
     )
+    return _job_response(request, updated)
+
+
+@router.post(
+    "/api/multiview/jobs/{job_id}/views/{view}/regenerate",
+    response_model=MultiviewJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def regenerate_multiview_view(
+    request: Request,
+    job_id: str,
+    view: str,
+    payload: RegenerateMultiviewViewRequest,
+) -> MultiviewJobResponse:
+    if view not in VIEW_ORDER:
+        raise ApiError(400, "invalid_view", "View must be front, left, or back.")
+    job = await _get_job(request, job_id)
+    slot = job.views[view]
+    if slot.current_image is None:
+        raise ApiError(409, "view_not_ready", "View image is not ready.")
+    if payload.strategy == RegenerateStrategy.local_reroll:
+        await request.app.state.comfy_client.ensure_available()
+        request.app.state.qwen_multiview_workflow.prepare_single_view_workflow("preflight.png", view)
+        source = request.app.state.storage.get_image_by_id(job.reference_image.image_id)
+        usage_reason = "multiview_regenerate_reference_image"
+    else:
+        source = request.app.state.storage.get_image_by_id(slot.current_image.image_id)
+        usage_reason = "multiview_regenerate_current_image"
+    attempt_id = _new_attempt_id()
+    job = await request.app.state.multiview_job_store.start_view_regeneration(
+        job_id,
+        view,
+        attempt_id,
+        payload.strategy.value,
+    )
+    if not getattr(request.app.state, "disable_background_jobs", False):
+        usage_lease = request.app.state.asset_usage_guard.acquire(
+            source.image_id,
+            owner=f"multiview-regenerate:{job_id}:{view}:{attempt_id}",
+            reason=usage_reason,
+        )
+        try:
+            if payload.strategy == RegenerateStrategy.local_reroll:
+                task = asyncio.create_task(
+                    run_multiview_view_regeneration_job(
+                        job_id,
+                        view,
+                        attempt_id,
+                        source,
+                        request.app.state.multiview_job_store,
+                        request.app.state.comfy_client,
+                        request.app.state.qwen_multiview_workflow,
+                        request.app.state.storage,
+                        usage_lease,
+                    )
+                )
+            else:
+                task = asyncio.create_task(
+                    run_multiview_view_openai_edit_job(
+                        job_id,
+                        view,
+                        attempt_id,
+                        source,
+                        job.reference_image.image_id,
+                        payload.instruction or "",
+                        request.app.state.multiview_job_store,
+                        request.app.state.openai_client,
+                        request.app.state.storage,
+                        usage_lease,
+                    )
+                )
+            request.app.state.background_tasks.add(task)
+            task.add_done_callback(request.app.state.background_tasks.discard)
+        except Exception:
+            usage_lease.release()
+            raise
+    return _job_response(request, job)
 
 
 @router.post(
@@ -175,7 +270,7 @@ async def _get_job(request: Request, job_id: str) -> MultiviewJob:
     return job
 
 
-def _job_response(job: MultiviewJob) -> MultiviewJobResponse:
+def _job_response(request: Request, job: MultiviewJob) -> MultiviewJobResponse:
     return MultiviewJobResponse(
         job_id=job.job_id,
         status=job.status,
@@ -191,6 +286,10 @@ def _job_response(job: MultiviewJob) -> MultiviewJobResponse:
                 accepted=slot.accepted,
                 error=slot.error,
                 provider=slot.provider,
+                versions=[
+                    _version_response(request, version, slot)
+                    for version in slot.versions
+                ],
             )
             for view, slot in job.views.items()
         },
@@ -234,6 +333,50 @@ def _image_response(image) -> MultiviewImageRef:
     )
 
 
+def _version_response(request: Request, version, slot) -> MultiviewViewVersionResponse:
+    state = _asset_state(request, version.image.image_id)
+    return MultiviewViewVersionResponse(
+        image=_image_response(version.image),
+        strategy=version.strategy,
+        created_at=version.created_at,
+        is_current=bool(slot.current_image and slot.current_image.image_id == version.image.image_id),
+        is_candidate=bool(slot.candidate_image and slot.candidate_image.image_id == version.image.image_id),
+        available=state == "active",
+        state=state,
+    )
+
+
+def _asset_state(request: Request, image_id: str) -> str:
+    catalog = request.app.state.asset_catalog
+    asset = catalog.get_asset(image_id)
+    if asset is None:
+        return "missing"
+    if asset.deleted_at is not None:
+        return "trash"
+    try:
+        path = catalog.resolve_relative_path(asset.relative_path)
+    except ApiError:
+        return "missing"
+    if asset.status != "available" or not path.exists() or not path.is_file():
+        return "missing"
+    return "active"
+
+
+def _validate_candidate_asset(request: Request, image_id: str, job_id: str, view: str) -> None:
+    catalog = request.app.state.asset_catalog
+    asset = catalog.get_asset(image_id)
+    if (
+        asset is None
+        or asset.asset_type != "image"
+        or asset.source != "multiview"
+        or asset.related_job_id != job_id
+        or asset.view_name != view
+    ):
+        raise ApiError(400, "invalid_candidate_image", "Image is not a candidate for this view.")
+    if _asset_state(request, image_id) != "active":
+        raise ApiError(409, "asset_unavailable", "Image asset is not available.")
+
+
 def _safe_model_path(root: Path, path: Path) -> Path:
     resolved = path.resolve()
     root_resolved = root.resolve()
@@ -242,3 +385,9 @@ def _safe_model_path(root: Path, path: Path) -> Path:
     if not resolved.exists() or not resolved.is_file():
         raise ApiError(404, "model_not_found", "Generated GLB model was not found.")
     return resolved
+
+
+def _new_attempt_id() -> str:
+    import uuid
+
+    return str(uuid.uuid4())

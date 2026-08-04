@@ -92,10 +92,30 @@ export type MultiviewName = 'front' | 'left' | 'back';
 
 export type MultiviewProvider = 'local';
 
+export type RegenerateStrategy = 'local_reroll' | 'openai_edit';
+
+export type RegenerateMultiviewViewRequest =
+  | { strategy: 'local_reroll' }
+  | { strategy: 'openai_edit'; instruction: string };
+
 export type MultiviewImageRef = {
   imageId: string;
   url: string;
   filename: string;
+};
+
+export type MultiviewVersionStrategy = 'initial' | 'local_reroll' | 'openai_edit';
+
+export type MultiviewVersionState = 'active' | 'trash' | 'missing';
+
+export type MultiviewViewVersion = {
+  image: MultiviewImageRef;
+  strategy: MultiviewVersionStrategy;
+  createdAt: string;
+  isCurrent: boolean;
+  isCandidate: boolean;
+  available: boolean;
+  state: MultiviewVersionState;
 };
 
 export type MultiviewSlot = {
@@ -106,6 +126,7 @@ export type MultiviewSlot = {
   accepted: boolean;
   error: string | null;
   provider: MultiviewProvider;
+  versions: MultiviewViewVersion[];
 };
 
 export type CreateMultiviewJobResponse = {

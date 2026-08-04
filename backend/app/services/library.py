@@ -63,15 +63,17 @@ def restore_asset(catalog: AssetCatalog, asset_id: str) -> LibraryAssetResponse:
     return asset_response(restored)
 
 
-def permanently_delete_asset(
+async def permanently_delete_asset(
     catalog: AssetCatalog,
     usage_guard: AssetUsageGuard,
+    multiview_job_store,
     asset_id: str,
 ) -> DeleteLibraryAssetResponse:
     asset = require_asset(catalog, asset_id)
     if asset.deleted_at is None:
         raise ApiError(409, "asset_not_in_trash", "Asset must be in trash before permanent delete.")
     _ensure_no_dependencies(catalog, asset)
+    await _ensure_no_live_current_or_candidate(multiview_job_store, asset.asset_id)
     _ensure_not_in_use(usage_guard, asset.asset_id)
     path = catalog.resolve_relative_path(asset.relative_path)
     if path.exists():
@@ -87,6 +89,7 @@ def permanently_delete_asset(
         catalog.delete_asset_record(asset.asset_id)
     except Exception as exc:
         raise ApiError(500, "asset_catalog_failed", "Asset catalog update failed.") from exc
+    await multiview_job_store.prune_history_version(asset.asset_id)
     return DeleteLibraryAssetResponse(deleted_asset_id=asset.asset_id)
 
 
@@ -133,4 +136,17 @@ def _ensure_not_in_use(usage_guard: AssetUsageGuard, asset_id: str) -> None:
                 for use in uses
             ]
         },
+    )
+
+
+async def _ensure_no_live_current_or_candidate(multiview_job_store, asset_id: str) -> None:
+    references = await multiview_job_store.find_live_asset_references(asset_id)
+    blockers = [reference for reference in references if reference["role"] in {"current", "candidate"}]
+    if not blockers:
+        return
+    raise ApiError(
+        409,
+        "asset_in_use",
+        "Asset is currently used by a multiview job.",
+        {"references": blockers},
     )

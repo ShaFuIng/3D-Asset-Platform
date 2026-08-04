@@ -42,6 +42,13 @@ class FakeOpenAIClient:
             raise self.error
         return self.image_bytes, "An edited prompt.", "response-edit-123"
 
+    async def edit_multiview_image(self, source_bytes, source_media_type, view, instruction):
+        return await self.edit_image(
+            source_bytes,
+            source_media_type,
+            f"{view}: {instruction}",
+        )
+
 
 class FakeComfyClient:
     def __init__(self, *, available: bool = True, timeout: bool = False, workflow_error=None) -> None:

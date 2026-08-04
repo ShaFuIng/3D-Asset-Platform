@@ -16,6 +16,7 @@ import type {
   MultiviewModelJobResponse,
   MultiviewName,
   OpenAIHealthResponse,
+  RegenerateMultiviewViewRequest,
   UploadImageResponse,
 } from '../types/api';
 
@@ -150,8 +151,26 @@ export async function acceptMultiviewView(
   signal?: AbortSignal,
 ): Promise<MultiviewJobResponse> {
   const data = await requestJson<MultiviewJobResponseBody>(
-    `/api/multiview/jobs/${jobId}/views/${view}/accept`,
+    `/api/multiview/jobs/${encodeURIComponent(jobId)}/views/${encodeURIComponent(view)}/accept`,
     { method: 'POST', signal },
+  );
+  return toMultiviewJob(data);
+}
+
+export async function setMultiviewViewCandidate(
+  jobId: string,
+  view: MultiviewName,
+  imageId: string,
+  signal?: AbortSignal,
+): Promise<MultiviewJobResponse> {
+  const data = await requestJson<MultiviewJobResponseBody>(
+    `/api/multiview/jobs/${encodeURIComponent(jobId)}/views/${encodeURIComponent(view)}/candidate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id: imageId }),
+      signal,
+    },
   );
   return toMultiviewJob(data);
 }
@@ -159,11 +178,17 @@ export async function acceptMultiviewView(
 export async function regenerateMultiviewView(
   jobId: string,
   view: MultiviewName,
+  payload: RegenerateMultiviewViewRequest,
   signal?: AbortSignal,
 ): Promise<MultiviewJobResponse> {
   const data = await requestJson<MultiviewJobResponseBody>(
-    `/api/multiview/jobs/${jobId}/views/${view}/regenerate`,
-    { method: 'POST', signal },
+    `/api/multiview/jobs/${encodeURIComponent(jobId)}/views/${encodeURIComponent(view)}/regenerate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal,
+    },
   );
   return toMultiviewJob(data);
 }
@@ -279,6 +304,17 @@ type MultiviewSlotBody = {
   accepted: boolean;
   error: string | null;
   provider: 'local';
+  versions: MultiviewViewVersionBody[];
+};
+
+type MultiviewViewVersionBody = {
+  image: MultiviewImageRefBody;
+  strategy: 'initial' | 'local_reroll' | 'openai_edit';
+  created_at: string;
+  is_current: boolean;
+  is_candidate: boolean;
+  available: boolean;
+  state: 'active' | 'trash' | 'missing';
 };
 
 type CreateMultiviewJobResponseBody = {
@@ -354,6 +390,15 @@ function toSlot(view: MultiviewName, slot: MultiviewSlotBody) {
     accepted: slot.accepted,
     error: slot.error,
     provider: slot.provider,
+    versions: slot.versions.map((version) => ({
+      image: toImageRef(version.image),
+      strategy: version.strategy,
+      createdAt: version.created_at,
+      isCurrent: version.is_current,
+      isCandidate: version.is_candidate,
+      available: version.available,
+      state: version.state,
+    })),
   };
 }
 

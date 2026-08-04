@@ -820,6 +820,134 @@ code {
   object-fit: contain;
 }
 
+.lightbox-version-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.lightbox-version-header div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.lightbox-version-header span {
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.lightbox-version-badges,
+.version-thumbnail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid #cbd5d1;
+  border-radius: 999px;
+  background: #f5f7f8;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.version-badge[data-kind='current'] {
+  border-color: #047857;
+  background: #e8f6f0;
+  color: #047857;
+}
+
+.version-badge[data-kind='candidate'] {
+  border-color: #245e91;
+  background: #eaf4ff;
+  color: #245e91;
+}
+
+.version-badge[data-kind='trash'],
+.version-badge[data-kind='missing'] {
+  border-color: #a16207;
+  background: #fbf3e2;
+  color: #a16207;
+}
+
+.lightbox-version-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.lightbox-version-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.lightbox-version-nav button,
+.lightbox-set-candidate button {
+  width: auto;
+}
+
+.lightbox-version-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 2px 10px;
+}
+
+.version-thumbnail {
+  display: grid;
+  flex: 0 0 132px;
+  gap: 5px;
+  min-height: 0;
+  padding: 8px;
+  border-color: #d3dce1;
+  background: #ffffff;
+  color: #334155;
+  text-align: left;
+  font-size: 0.74rem;
+}
+
+.version-thumbnail[data-active='true'] {
+  border-color: #245e91;
+  box-shadow: 0 0 0 2px rgba(36, 94, 145, 0.16);
+}
+
+.version-thumbnail img,
+.version-thumbnail-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: #eef3f1;
+  object-fit: contain;
+}
+
+.version-thumbnail-placeholder,
+.version-image-placeholder {
+  display: grid;
+  place-items: center;
+  border: 1px dashed #cbd5d1;
+  color: #64748b;
+}
+
+.version-image-placeholder {
+  min-height: min(58vh, 520px);
+  border-radius: 8px;
+  background: #eef3f1;
+}
+
+.lightbox-set-candidate {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding-top: 10px;
+  border-top: 1px solid #d3dce1;
+}
+
 .lightbox-edit-panel {
   display: grid;
   gap: 10px;
@@ -849,6 +977,20 @@ code {
 
   .lightbox-body {
     padding-right: 0;
+  }
+
+  .lightbox-version-header,
+  .lightbox-version-nav {
+    flex-direction: column;
+  }
+
+  .lightbox-version-nav button,
+  .lightbox-set-candidate button {
+    width: 100%;
+  }
+
+  .version-thumbnail {
+    flex-basis: 112px;
   }
 
 }
@@ -1388,6 +1530,20 @@ code {
   gap: 8px;
 }
 
+.view-card-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.view-version-count {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .view-card-image-wrap {
   position: relative;
 }
@@ -1404,6 +1560,37 @@ code {
 .view-card-accept:not(:disabled) {
   border-color: #245e91;
   background: #245e91;
+}
+
+.view-regenerate-actions {
+  display: grid;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #dbe4e0;
+}
+
+.view-regenerate-group {
+  display: grid;
+  gap: 7px;
+}
+
+.view-regenerate-group label {
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.view-regenerate-group textarea {
+  width: 100%;
+  min-height: 78px;
+  border: 1px solid #cbd5d1;
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.view-regenerate-group button {
+  font-size: 0.85rem;
 }
 
 .refine-panel {

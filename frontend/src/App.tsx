@@ -72,8 +72,8 @@ export default function App() {
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/reference" element={<ReferenceStagePage openai={openai} />} />
           <Route path="/mode" element={<ModeSelectPage />} />
-          <Route path="/views" element={<MultiviewStagePage comfy={comfy} />} />
-          <Route path="/views/:imageId" element={<MultiviewStagePage comfy={comfy} />} />
+          <Route path="/views" element={<MultiviewStagePage comfy={comfy} openai={openai} />} />
+          <Route path="/views/:imageId" element={<MultiviewStagePage comfy={comfy} openai={openai} />} />
           <Route path="/generate" element={<GenerateConfirmPage comfy={comfy} />} />
           <Route path="/jobs/:pipeline/:jobId" element={<JobProgressPage />} />
           <Route path="/viewer/:pipeline/:jobId" element={<ViewerStagePage />} />

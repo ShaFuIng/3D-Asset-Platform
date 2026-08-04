@@ -1,6 +1,8 @@
 import asyncio
+import secrets
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..errors import ApiError
@@ -17,6 +19,14 @@ class StoredImage:
 
 
 @dataclass(frozen=True)
+class MultiviewViewVersion:
+    image: StoredImage
+    strategy: str
+    created_at: str
+    regeneration_attempt_id: str | None = None
+
+
+@dataclass(frozen=True)
 class MultiviewSlot:
     view: str
     status: JobStatus
@@ -25,6 +35,10 @@ class MultiviewSlot:
     accepted: bool
     error: str | None
     provider: str
+    versions: tuple[MultiviewViewVersion, ...] = ()
+    regeneration_attempt_id: str | None = None
+    regeneration_prompt_id: str | None = None
+    regeneration_strategy: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +85,7 @@ class MultiviewJobStore:
                     accepted=False,
                     error=None,
                     provider=provider,
+                    versions=(),
                 )
                 for view in VIEW_ORDER
             },
@@ -110,7 +125,12 @@ class MultiviewJobStore:
                 view: _replace_slot(
                     current.views[view],
                     status=JobStatus.succeeded,
-                    current_image=StoredImage(image_id=images[view].image_id, filename=images[view].filename),
+                    current_image=_stored_image(images[view]),
+                    versions=_append_version(
+                        current.views[view].versions,
+                        _stored_image(images[view]),
+                        "initial",
+                    ),
                     error=None,
                 )
                 for view in VIEW_ORDER
@@ -156,13 +176,141 @@ class MultiviewJobStore:
         updated_slot = _replace_slot(
             slot,
             status=JobStatus.succeeded,
-            candidate_image=StoredImage(image_id=image.image_id, filename=image.filename),
+            candidate_image=_stored_image(image),
+            versions=_append_version(slot.versions, _stored_image(image), "local_reroll"),
             error=None,
         )
         updated = await self._update(job_id, views={**current.views, view: updated_slot})
         if updated is None:
             raise ApiError(404, "multiview_job_not_found", "Multiview job was not found.")
         return updated
+
+    async def set_view_candidate_from_version(self, job_id: str, view: str, image_id: str) -> MultiviewJob:
+        async with self._lock:
+            current = self._jobs.get(job_id)
+            if current is None:
+                raise ApiError(404, "multiview_job_not_found", "Multiview job was not found.")
+            slot = _require_view(current, view)
+            if slot.status in {JobStatus.queued, JobStatus.running}:
+                raise ApiError(409, "view_regeneration_running", "View regeneration is already running.")
+            version = _find_version(slot.versions, image_id)
+            if version is None:
+                raise ApiError(400, "version_not_found", "Image is not a version of this view.")
+            candidate = None
+            if slot.current_image is None or slot.current_image.image_id != image_id:
+                candidate = version.image
+            updated_slot = _replace_slot(
+                slot,
+                status=JobStatus.succeeded,
+                candidate_image=candidate,
+                error=None,
+            )
+            updated = MultiviewJob(
+                job_id=current.job_id,
+                status=current.status,
+                message=current.message,
+                provider=current.provider,
+                reference_image=current.reference_image,
+                prompt_id=current.prompt_id,
+                views={**current.views, view: updated_slot},
+                model_job=current.model_job,
+            )
+            self._jobs[job_id] = updated
+            return updated
+
+    async def start_view_regeneration(
+        self,
+        job_id: str,
+        view: str,
+        attempt_id: str,
+        strategy: str,
+    ) -> MultiviewJob:
+        current = await self._require(job_id)
+        slot = _require_view(current, view)
+        if slot.current_image is None:
+            raise ApiError(409, "view_not_ready", "View image is not ready.")
+        if slot.status in {JobStatus.queued, JobStatus.running}:
+            raise ApiError(409, "view_regeneration_running", "View regeneration is already running.")
+        updated_slot = _replace_slot(
+            slot,
+            status=JobStatus.queued,
+            error=None,
+            regeneration_attempt_id=attempt_id,
+            regeneration_prompt_id=None,
+            regeneration_strategy=strategy,
+        )
+        updated = await self._update(job_id, views={**current.views, view: updated_slot})
+        if updated is None:
+            raise ApiError(404, "multiview_job_not_found", "Multiview job was not found.")
+        return updated
+
+    async def mark_view_regeneration_running(
+        self,
+        job_id: str,
+        view: str,
+        attempt_id: str,
+        prompt_id: str | None = None,
+    ) -> MultiviewJob | None:
+        current = await self._require(job_id)
+        slot = _require_view(current, view)
+        if slot.regeneration_attempt_id != attempt_id:
+            return current
+        updated_slot = _replace_slot(
+            slot,
+            status=JobStatus.running,
+            error=None,
+            regeneration_prompt_id=prompt_id if prompt_id is not None else slot.regeneration_prompt_id,
+        )
+        return await self._update(job_id, views={**current.views, view: updated_slot})
+
+    async def set_view_regeneration_candidate(
+        self,
+        job_id: str,
+        view: str,
+        attempt_id: str,
+        image: ImageRecord,
+    ) -> MultiviewJob | None:
+        current = await self._require(job_id)
+        slot = _require_view(current, view)
+        if slot.regeneration_attempt_id != attempt_id:
+            return current
+        updated_slot = _replace_slot(
+            slot,
+            status=JobStatus.succeeded,
+            candidate_image=_stored_image(image),
+            versions=_append_version(
+                slot.versions,
+                _stored_image(image),
+                slot.regeneration_strategy or "local_reroll",
+                attempt_id,
+            ),
+            error=None,
+            regeneration_attempt_id=None,
+            regeneration_prompt_id=None,
+            regeneration_strategy=None,
+        )
+        return await self._update(job_id, views={**current.views, view: updated_slot})
+
+    async def set_view_regeneration_failed(
+        self,
+        job_id: str,
+        view: str,
+        attempt_id: str,
+        message: str,
+    ) -> MultiviewJob | None:
+        current = await self._require(job_id)
+        slot = _require_view(current, view)
+        if slot.regeneration_attempt_id != attempt_id:
+            return current
+        updated_slot = _replace_slot(
+            slot,
+            status=JobStatus.failed,
+            error=message,
+            regeneration_attempt_id=None,
+            regeneration_prompt_id=None,
+            regeneration_strategy=None,
+        )
+        return await self._update(job_id, views={**current.views, view: updated_slot})
 
     async def start_model_job(self, job_id: str) -> MultiviewJob:
         current = await self._require(job_id)
@@ -200,6 +348,59 @@ class MultiviewJobStore:
             textured_path=textured_path if textured_path is not None else current.model_job.textured_path,
         )
         return await self._update(job_id, model_job=model_job)
+
+    async def find_live_asset_references(self, asset_id: str) -> list[dict[str, str]]:
+        async with self._lock:
+            references: list[dict[str, str]] = []
+            for job in self._jobs.values():
+                for view, slot in job.views.items():
+                    if slot.current_image and slot.current_image.image_id == asset_id:
+                        references.append({"job_id": job.job_id, "view": view, "role": "current"})
+                    if slot.candidate_image and slot.candidate_image.image_id == asset_id:
+                        references.append({"job_id": job.job_id, "view": view, "role": "candidate"})
+                    if (
+                        any(version.image.image_id == asset_id for version in slot.versions)
+                        and not any(
+                            reference["job_id"] == job.job_id
+                            and reference["view"] == view
+                            and reference["role"] in {"current", "candidate"}
+                            for reference in references
+                        )
+                    ):
+                        references.append({"job_id": job.job_id, "view": view, "role": "history_only"})
+            return references
+
+    async def prune_history_version(self, asset_id: str) -> None:
+        async with self._lock:
+            for job_id, job in list(self._jobs.items()):
+                next_views = {}
+                changed = False
+                for view, slot in job.views.items():
+                    if (
+                        (slot.current_image and slot.current_image.image_id == asset_id)
+                        or (slot.candidate_image and slot.candidate_image.image_id == asset_id)
+                    ):
+                        next_views[view] = slot
+                        continue
+                    next_versions = tuple(
+                        version for version in slot.versions if version.image.image_id != asset_id
+                    )
+                    if next_versions != slot.versions:
+                        changed = True
+                        next_views[view] = _replace_slot(slot, versions=next_versions)
+                    else:
+                        next_views[view] = slot
+                if changed:
+                    self._jobs[job_id] = MultiviewJob(
+                        job_id=job.job_id,
+                        status=job.status,
+                        message=job.message,
+                        provider=job.provider,
+                        reference_image=job.reference_image,
+                        prompt_id=job.prompt_id,
+                        views=next_views,
+                        model_job=job.model_job,
+                    )
 
     async def _require(self, job_id: str) -> MultiviewJob:
         job = await self.get(job_id)
@@ -343,6 +544,84 @@ async def run_multiview_model_job(
             usage_lease.release()
 
 
+async def run_multiview_view_regeneration_job(
+    job_id: str,
+    view: str,
+    attempt_id: str,
+    reference: ImageRecord,
+    store: MultiviewJobStore,
+    comfy: ComfyClient,
+    qwen: QwenMultiviewWorkflow,
+    asset_storage,
+    usage_lease=None,
+) -> None:
+    try:
+        await store.mark_view_regeneration_running(job_id, view, attempt_id)
+        comfy_image_name = await comfy.upload_image(reference.path)
+        workflow = qwen.prepare_single_view_workflow(
+            comfy_image_name,
+            view,
+            seed=_new_seed(),
+        )
+        prompt_id = await comfy.queue_prompt(workflow, client_id=f"{job_id}-{view}-{attempt_id}")
+        await store.mark_view_regeneration_running(job_id, view, attempt_id, prompt_id=prompt_id)
+        history = await _wait_for_history(comfy, prompt_id)
+        output = qwen.parse_single_view_output(history, prompt_id)
+        content = await comfy.download_output_bytes(output.as_dict())
+        image = asset_storage.save_image_bytes(
+            content,
+            f"qwen-{view}",
+            ".png",
+            source="multiview",
+            related_job_id=job_id,
+            reference_image_id=reference.image_id,
+            view_name=view,
+        )
+        await store.set_view_regeneration_candidate(job_id, view, attempt_id, image)
+    except (ApiError, ComfyClientError, Exception) as exc:
+        await store.set_view_regeneration_failed(job_id, view, attempt_id, _safe_failure_message(exc))
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
+
+
+async def run_multiview_view_openai_edit_job(
+    job_id: str,
+    view: str,
+    attempt_id: str,
+    source: ImageRecord,
+    reference_image_id: str,
+    instruction: str,
+    store: MultiviewJobStore,
+    openai_client,
+    asset_storage,
+    usage_lease=None,
+) -> None:
+    try:
+        await store.mark_view_regeneration_running(job_id, view, attempt_id)
+        image_bytes, _image_prompt, _response_id = await openai_client.edit_multiview_image(
+            source.path.read_bytes(),
+            source.media_type,
+            view,
+            instruction,
+        )
+        image = asset_storage.save_image_bytes(
+            image_bytes,
+            f"qwen-{view}",
+            ".png",
+            source="multiview",
+            related_job_id=job_id,
+            reference_image_id=reference_image_id,
+            view_name=view,
+        )
+        await store.set_view_regeneration_candidate(job_id, view, attempt_id, image)
+    except (ApiError, OSError, Exception) as exc:
+        await store.set_view_regeneration_failed(job_id, view, attempt_id, _safe_failure_message(exc))
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
+
+
 async def _wait_for_history(comfy: ComfyClient, prompt_id: str) -> dict:
     deadline = asyncio.get_running_loop().time() + comfy.settings.comfyui_job_timeout_seconds
     while asyncio.get_running_loop().time() < deadline:
@@ -368,9 +647,46 @@ def _replace_slot(slot: MultiviewSlot, **updates) -> MultiviewSlot:
         "accepted": slot.accepted,
         "error": slot.error,
         "provider": slot.provider,
+        "versions": slot.versions,
+        "regeneration_attempt_id": slot.regeneration_attempt_id,
+        "regeneration_prompt_id": slot.regeneration_prompt_id,
+        "regeneration_strategy": slot.regeneration_strategy,
     }
     values.update(updates)
     return MultiviewSlot(**values)
+
+
+def _stored_image(image: ImageRecord) -> StoredImage:
+    return StoredImage(image_id=image.image_id, filename=image.filename)
+
+
+def _append_version(
+    versions: tuple[MultiviewViewVersion, ...],
+    image: StoredImage,
+    strategy: str,
+    attempt_id: str | None = None,
+) -> tuple[MultiviewViewVersion, ...]:
+    if any(version.image.image_id == image.image_id for version in versions):
+        return versions
+    return (
+        *versions,
+        MultiviewViewVersion(
+            image=image,
+            strategy=strategy,
+            created_at=_utc_now(),
+            regeneration_attempt_id=attempt_id,
+        ),
+    )
+
+
+def _find_version(
+    versions: tuple[MultiviewViewVersion, ...],
+    image_id: str,
+) -> MultiviewViewVersion | None:
+    for version in versions:
+        if version.image.image_id == image_id:
+            return version
+    return None
 
 
 def _require_view(job: MultiviewJob, view: str) -> MultiviewSlot:
@@ -398,3 +714,11 @@ def _safe_failure_message(exc: Exception) -> str:
     if isinstance(exc, ComfyClientError):
         return str(exc)
     return "Multiview generation failed."
+
+
+def _new_seed() -> int:
+    return secrets.randbelow(2**63)
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()

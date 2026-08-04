@@ -12,6 +12,7 @@ import {
   getMultiviewModelJob,
   regenerateMultiviewView,
   resolveApiUrl,
+  setMultiviewViewCandidate,
   uploadImage as requestUploadImage,
 } from '../api/client';
 import type {
@@ -22,6 +23,8 @@ import type {
   MultiviewJobResponse,
   MultiviewModelJobResponse,
   MultiviewName,
+  RegenerateMultiviewViewRequest,
+  RegenerateStrategy,
 } from '../types/api';
 import {
   createMessageId,
@@ -45,7 +48,8 @@ export type MultiviewModelKind = 'geometry' | 'textured';
 // Tracks user-triggered per-view actions currently in flight, so view cards
 // can show their own loading state. The ref-based locks stay the real
 // concurrency guard; this field is display-only.
-export type PendingViewActions = Partial<Record<MultiviewName, 'accept'>>;
+export type PendingViewAction = 'accept' | 'set_candidate' | RegenerateStrategy;
+export type PendingViewActions = Partial<Record<MultiviewName, PendingViewAction>>;
 
 export type MultiviewWorkspace = {
   job: MultiviewJobResponse | null;
@@ -68,6 +72,7 @@ const EMPTY_MULTIVIEW_WORKSPACE: MultiviewWorkspace = {
 };
 
 const DEFAULT_JOB_ENTRY: JobEntry = { isCreatingJob: false };
+const MULTIVIEW_ORDER: MultiviewName[] = ['front', 'left', 'back'];
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === 'AbortError') {
@@ -81,6 +86,25 @@ function getErrorMessage(error: unknown): string {
 
 function isPendingStatus(status?: JobStatus): boolean {
   return status === 'queued' || status === 'running';
+}
+
+function hasPendingMultiviewJob(workspace: MultiviewWorkspace): boolean {
+  if (!workspace.job) {
+    return false;
+  }
+  return (
+    isPendingStatus(workspace.job.status) ||
+    MULTIVIEW_ORDER.some((view) => isPendingStatus(workspace.job?.views[view].status))
+  );
+}
+
+function getMultiviewPollingKey(imageId: string, workspace: MultiviewWorkspace): string {
+  const job = workspace.job;
+  if (!job) {
+    return '';
+  }
+  const viewStatuses = MULTIVIEW_ORDER.map((view) => job.views[view].status).join(':');
+  return `${imageId}:${job.jobId}:${job.status}:${viewStatuses}`;
 }
 
 function createConversationMessage(
@@ -146,7 +170,19 @@ export type WorkspaceContextValue = {
   multiviewByImageId: Record<string, MultiviewWorkspace>;
   startMultiview: (imageId: string) => Promise<void>;
   acceptView: (imageId: string, view: MultiviewName) => Promise<void>;
-  regenerateView: (imageId: string, view: MultiviewName) => Promise<void>;
+  setViewCandidate: (
+    imageId: string,
+    view: MultiviewName,
+    versionImageId: string,
+  ) => Promise<boolean>;
+  regenerateView: (
+    imageId: string,
+    view: MultiviewName,
+    strategy: RegenerateStrategy,
+    instruction?: string,
+  ) => Promise<void>;
+  multiviewEditDrafts: Record<string, string>;
+  setMultiviewEditDraft: (jobId: string, view: MultiviewName, value: string) => void;
   startModelJob: (imageId: string) => Promise<boolean>;
   setMultiviewModelKind: (imageId: string, kind: MultiviewModelKind) => void;
 
@@ -178,6 +214,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [pipelineByImageId, setPipelineByImageId] = useState<Record<string, Pipeline>>({});
   const [singleJobsByImageId, setSingleJobsByImageId] = useState<Record<string, JobEntry>>({});
   const [multiviewByImageId, setMultiviewByImageId] = useState<Record<string, MultiviewWorkspace>>({});
+  const [multiviewEditDrafts, setMultiviewEditDrafts] = useState<Record<string, string>>({});
 
   // In-flight locks: synchronous, render-cycle-independent guards against
   // double submission. The React busy states (isCreatingJob / isStarting /
@@ -241,13 +278,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function getMultiviewEditDraftKey(jobId: string, view: MultiviewName): string {
+    return `${jobId}:${view}`;
+  }
+
+  function setMultiviewEditDraft(jobId: string, view: MultiviewName, value: string) {
+    setMultiviewEditDrafts((current) => ({
+      ...current,
+      [getMultiviewEditDraftKey(jobId, view)]: value,
+    }));
+  }
+
   // Display-only per-view pending flag (the real concurrency guard is the
   // view action lock above).
-  function setViewActionPending(imageId: string, view: MultiviewName, pending: boolean) {
+  function setViewActionPending(imageId: string, view: MultiviewName, action?: PendingViewAction) {
     updateMultiviewEntry(imageId, (workspace) => {
       const next: PendingViewActions = { ...workspace.pendingViewActions };
-      if (pending) {
-        next[view] = 'accept';
+      if (action) {
+        next[view] = action;
       } else {
         delete next[view];
       }
@@ -333,13 +381,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [pendingSingleJobsKey]);
 
   const pendingMultiviewJobsKey = Object.entries(multiviewByImageId)
-    .filter(([, workspace]) => workspace.job && isPendingStatus(workspace.job.status))
-    .map(([imageId, workspace]) => `${imageId}:${workspace.job!.jobId}:${workspace.job!.status}`)
+    .filter(([, workspace]) => hasPendingMultiviewJob(workspace))
+    .map(([imageId, workspace]) => getMultiviewPollingKey(imageId, workspace))
     .join('|');
 
   useEffect(() => {
     const pendingImageIds = Object.entries(multiviewByImageId)
-      .filter(([, workspace]) => workspace.job && isPendingStatus(workspace.job.status))
+      .filter(([, workspace]) => hasPendingMultiviewJob(workspace))
       .map(([imageId]) => imageId);
 
     if (pendingImageIds.length === 0) {
@@ -747,14 +795,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function acceptView(imageId: string, view: MultiviewName) {
-    const lockKey = `${imageId}:${view}`;
     const lock = viewActionLockRef.current;
     const job = multiviewByImageId[imageId]?.job;
+    const lockKey = job ? `${imageId}:${job.jobId}:${view}` : `${imageId}:${view}`;
     if (!job || lock.has(lockKey)) {
       return;
     }
     lock.add(lockKey);
-    setViewActionPending(imageId, view, true);
+    setViewActionPending(imageId, view, 'accept');
 
     const expectedJobId = job.jobId;
     updateMultiviewEntry(imageId, (workspace) => ({ ...workspace, error: null }));
@@ -768,24 +816,69 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }));
     } finally {
       lock.delete(lockKey);
-      setViewActionPending(imageId, view, false);
+      setViewActionPending(imageId, view);
     }
   }
 
-  async function regenerateView(imageId: string, view: MultiviewName) {
-    const lockKey = `${imageId}:${view}`;
+  async function setViewCandidate(
+    imageId: string,
+    view: MultiviewName,
+    versionImageId: string,
+  ): Promise<boolean> {
     const lock = viewActionLockRef.current;
     const job = multiviewByImageId[imageId]?.job;
-    if (!job || lock.has(lockKey)) {
-      return;
+    const lockKey = job ? `${imageId}:${job.jobId}:${view}` : `${imageId}:${view}`;
+    if (!job || lock.has(lockKey) || isPendingStatus(job.status) || isPendingStatus(job.views[view].status)) {
+      return false;
     }
     lock.add(lockKey);
-    setViewActionPending(imageId, view, true);
+    setViewActionPending(imageId, view, 'set_candidate');
 
     const expectedJobId = job.jobId;
     updateMultiviewEntry(imageId, (workspace) => ({ ...workspace, error: null }));
     try {
-      const nextJob = await regenerateMultiviewView(expectedJobId, view);
+      const nextJob = await setMultiviewViewCandidate(expectedJobId, view, versionImageId);
+      updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({ ...workspace, job: nextJob }));
+      return true;
+    } catch (error) {
+      updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({
+        ...workspace,
+        error: getErrorMessage(error),
+      }));
+      return false;
+    } finally {
+      lock.delete(lockKey);
+      setViewActionPending(imageId, view);
+    }
+  }
+
+  async function regenerateView(
+    imageId: string,
+    view: MultiviewName,
+    strategy: RegenerateStrategy,
+    instruction?: string,
+  ) {
+    const lock = viewActionLockRef.current;
+    const job = multiviewByImageId[imageId]?.job;
+    const lockKey = job ? `${imageId}:${job.jobId}:${view}` : `${imageId}:${view}`;
+    if (!job || lock.has(lockKey)) {
+      return;
+    }
+    const content = instruction?.trim() ?? '';
+    if (strategy === 'openai_edit' && !content) {
+      return;
+    }
+    const payload: RegenerateMultiviewViewRequest =
+      strategy === 'local_reroll'
+        ? { strategy: 'local_reroll' }
+        : { strategy: 'openai_edit', instruction: content };
+    lock.add(lockKey);
+    setViewActionPending(imageId, view, strategy);
+
+    const expectedJobId = job.jobId;
+    updateMultiviewEntry(imageId, (workspace) => ({ ...workspace, error: null }));
+    try {
+      const nextJob = await regenerateMultiviewView(expectedJobId, view, payload);
       updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({ ...workspace, job: nextJob }));
     } catch (error) {
       updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({
@@ -794,7 +887,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }));
     } finally {
       lock.delete(lockKey);
-      setViewActionPending(imageId, view, false);
+      setViewActionPending(imageId, view);
     }
   }
 
@@ -883,7 +976,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const hasActiveJobs =
     Object.values(singleJobsByImageId).some((entry) => entry.job && isPendingStatus(entry.job.status)) ||
     Object.values(multiviewByImageId).some(
-      (workspace) => isPendingStatus(workspace.job?.status) || isPendingStatus(workspace.modelJob?.status),
+      (workspace) => hasPendingMultiviewJob(workspace) || isPendingStatus(workspace.modelJob?.status),
     );
 
   const value: WorkspaceContextValue = {
@@ -917,7 +1010,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     multiviewByImageId,
     startMultiview,
     acceptView,
+    setViewCandidate,
     regenerateView,
+    multiviewEditDrafts,
+    setMultiviewEditDraft,
     startModelJob,
     setMultiviewModelKind,
     refreshJobStatus,
