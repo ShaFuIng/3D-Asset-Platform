@@ -85,8 +85,9 @@ async def restore_library_asset(request: Request, asset_id: str) -> LibraryAsset
 
 @router.delete("/api/library/assets/{asset_id}", response_model=DeleteLibraryAssetResponse)
 async def delete_library_asset(request: Request, asset_id: str) -> DeleteLibraryAssetResponse:
-    return permanently_delete_asset(
+    return await permanently_delete_asset(
         request.app.state.asset_catalog,
         request.app.state.asset_usage_guard,
+        request.app.state.multiview_job_store,
         asset_id,
     )

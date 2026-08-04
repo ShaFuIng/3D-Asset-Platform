@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ChatMessage(BaseModel):
@@ -70,6 +70,27 @@ class CreateMultiviewJobRequest(BaseModel):
     provider: Literal["local"] = "local"
 
 
+class RegenerateStrategy(str, Enum):
+    local_reroll = "local_reroll"
+    openai_edit = "openai_edit"
+
+
+class RegenerateMultiviewViewRequest(BaseModel):
+    strategy: RegenerateStrategy
+    instruction: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_strategy_payload(self) -> "RegenerateMultiviewViewRequest":
+        if self.strategy == RegenerateStrategy.local_reroll and self.instruction is not None:
+            raise ValueError("instruction is not allowed for local_reroll")
+        if self.strategy == RegenerateStrategy.openai_edit:
+            instruction = (self.instruction or "").strip()
+            if not instruction:
+                raise ValueError("instruction is required for openai_edit")
+            self.instruction = instruction
+        return self
+
+
 class JobStatus(str, Enum):
     queued = "queued"
     running = "running"
@@ -101,6 +122,20 @@ class MultiviewImageRef(BaseModel):
     url: str
 
 
+class SetMultiviewCandidateRequest(BaseModel):
+    image_id: str = Field(min_length=1)
+
+
+class MultiviewViewVersionResponse(BaseModel):
+    image: MultiviewImageRef
+    strategy: Literal["initial", "local_reroll", "openai_edit"]
+    created_at: str
+    is_current: bool
+    is_candidate: bool
+    available: bool
+    state: Literal["active", "trash", "missing"]
+
+
 class MultiviewSlotResponse(BaseModel):
     status: JobStatus
     current_image: MultiviewImageRef | None
@@ -108,6 +143,7 @@ class MultiviewSlotResponse(BaseModel):
     accepted: bool
     error: str | None
     provider: Literal["local"]
+    versions: list[MultiviewViewVersionResponse] = Field(default_factory=list)
 
 
 class CreateMultiviewJobResponse(BaseModel):

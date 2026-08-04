@@ -8,6 +8,7 @@ from openai import APIError, AsyncOpenAI, OpenAIError
 from ..config import Settings
 from ..errors import ApiError
 from ..schemas import ChatMessage
+from .multiview_edit_prompts import build_multiview_edit_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,19 @@ class OpenAIImageClient:
             raise ApiError(502, "openai_request_failed", "OpenAI image edit failed.") from exc
 
         return self._parse_image_response(response)
+
+    async def edit_multiview_image(
+        self,
+        source_bytes: bytes,
+        source_media_type: str,
+        view: str,
+        instruction: str,
+    ) -> tuple[bytes, str | None, str]:
+        return await self.edit_image(
+            source_bytes,
+            source_media_type,
+            build_multiview_edit_prompt(view, instruction),
+        )
 
     def _parse_image_response(self, response: Any) -> tuple[bytes, str | None, str]:
         image_call = next(

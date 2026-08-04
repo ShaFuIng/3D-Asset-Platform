@@ -194,6 +194,66 @@ def test_edit_image_sends_text_image_data_url_and_edit_action(settings, monkeypa
     assert base64.b64decode(data_url.split(",", 1)[1]) == source_bytes
 
 
+def test_edit_multiview_image_adds_view_constraints_and_uses_edit_action(settings, monkeypatch):
+    captured_request = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            captured_request.update(kwargs)
+            return SimpleNamespace(
+                id="response-edit",
+                output=[
+                    SimpleNamespace(
+                        type="image_generation_call",
+                        result=base64.b64encode(b"edited-image-bytes").decode("ascii"),
+                        revised_prompt="Edit the left sleeve.",
+                    )
+                ],
+            )
+
+    class FakeAsyncOpenAI:
+        def __init__(self, api_key):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(openai_client_module, "AsyncOpenAI", FakeAsyncOpenAI)
+    configured_settings = settings.__class__(
+        **{**settings.__dict__, "openai_api_key": "test-key"}
+    )
+    client = OpenAIImageClient(configured_settings)
+
+    image_bytes, _prompt, response_id = asyncio.run(
+        client.edit_multiview_image(
+            b"source-image",
+            "image/png",
+            "left",
+            "將左側袖子改成黑色",
+        )
+    )
+
+    assert image_bytes == b"edited-image-bytes"
+    assert response_id == "response-edit"
+    assert captured_request["tools"] == [
+        {"type": "image_generation", "action": "edit"}
+    ]
+    assert "previous_response_id" not in captured_request
+    prompt = captured_request["input"][0]["content"][0]["text"]
+    assert "left side view" in prompt
+    assert "identity, pose, proportions" in prompt
+    assert "Only modify the parts explicitly requested" in prompt
+    assert "Preserve all other clothing, accessories, colors, background" in prompt
+    assert "User instruction: 將左側袖子改成黑色" in prompt
+
+
+def test_edit_multiview_image_without_openai_key_returns_503(settings):
+    client = OpenAIImageClient(settings)
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(client.edit_multiview_image(b"source", "image/png", "front", "Edit it."))
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.code == "openai_not_configured"
+
+
 def test_edit_image_openai_error_returns_safe_api_error(settings, monkeypatch):
     class FakeResponses:
         async def create(self, **kwargs):

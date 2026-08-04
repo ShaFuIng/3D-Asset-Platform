@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -305,6 +306,129 @@ def test_in_use_asset_blocks_permanent_delete_but_allows_trash(client: TestClien
     assert delete.json()["error"]["details"]["uses"][0]["reason"] == "test_reason"
 
 
+def test_multiview_current_image_blocks_permanent_delete(client: TestClient, image_id: str) -> None:
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = _save_multiview_records(client, job.job_id, image_id)
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        return records["left"].image_id
+
+    current_id = asyncio.run(prepare())
+    client.post(f"/api/library/assets/{current_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{current_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_in_use"
+    assert response.json()["error"]["details"]["references"][0]["role"] == "current"
+
+
+def test_multiview_candidate_image_blocks_permanent_delete(client: TestClient, image_id: str) -> None:
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = _save_multiview_records(client, job.job_id, image_id)
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        candidate = _save_multiview_image(client, job.job_id, image_id, "left", "candidate")
+        await client.app.state.multiview_job_store.set_candidate(job.job_id, "left", candidate)
+        return candidate.image_id
+
+    candidate_id = asyncio.run(prepare())
+    client.post(f"/api/library/assets/{candidate_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{candidate_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_in_use"
+    assert response.json()["error"]["details"]["references"][0]["role"] == "candidate"
+
+
+def test_multiview_history_only_version_can_be_deleted_and_pruned(
+    client: TestClient, image_id: str
+) -> None:
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = _save_multiview_records(client, job.job_id, image_id)
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        candidate = _save_multiview_image(client, job.job_id, image_id, "left", "candidate")
+        await client.app.state.multiview_job_store.set_candidate(job.job_id, "left", candidate)
+        await client.app.state.multiview_job_store.accept_view(job.job_id, "left")
+        return job.job_id, records["left"].image_id
+
+    job_id, history_id = asyncio.run(prepare())
+    client.post(f"/api/library/assets/{history_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{history_id}")
+    job = asyncio.run(client.app.state.multiview_job_store.get(job_id))
+
+    assert response.status_code == 200
+    assert client.app.state.asset_catalog.get_asset(history_id) is None
+    assert history_id not in [version.image.image_id for version in job.views["left"].versions]
+
+
+def test_multiview_history_only_delete_failure_does_not_prune_versions(
+    client: TestClient,
+    image_id: str,
+    monkeypatch,
+) -> None:
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = _save_multiview_records(client, job.job_id, image_id)
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        candidate = _save_multiview_image(client, job.job_id, image_id, "left", "candidate")
+        await client.app.state.multiview_job_store.set_candidate(job.job_id, "left", candidate)
+        await client.app.state.multiview_job_store.accept_view(job.job_id, "left")
+        return job.job_id, records["left"].image_id
+
+    job_id, history_id = asyncio.run(prepare())
+    client.post(f"/api/library/assets/{history_id}/trash")
+
+    def locked(_path):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(Path, "unlink", locked)
+    response = client.delete(f"/api/library/assets/{history_id}")
+    job = asyncio.run(client.app.state.multiview_job_store.get(job_id))
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_file_locked"
+    assert history_id in [version.image.image_id for version in job.views["left"].versions]
+
+
+def test_multiview_history_only_asset_usage_guard_still_blocks_delete(
+    client: TestClient,
+    image_id: str,
+) -> None:
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = _save_multiview_records(client, job.job_id, image_id)
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        candidate = _save_multiview_image(client, job.job_id, image_id, "left", "candidate")
+        await client.app.state.multiview_job_store.set_candidate(job.job_id, "left", candidate)
+        await client.app.state.multiview_job_store.accept_view(job.job_id, "left")
+        return records["left"].image_id
+
+    history_id = asyncio.run(prepare())
+    client.post(f"/api/library/assets/{history_id}/trash")
+    lease = client.app.state.asset_usage_guard.acquire(
+        history_id,
+        owner="test-history",
+        reason="history_cleanup_test",
+    )
+    try:
+        response = client.delete(f"/api/library/assets/{history_id}")
+    finally:
+        lease.release()
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_in_use"
+    assert response.json()["error"]["details"]["uses"][0]["reason"] == "history_cleanup_test"
+
+
 def test_different_asset_in_use_does_not_block_delete(client: TestClient) -> None:
     first = _upload(client, "first.png")
     second = _upload(client, "second.png")
@@ -357,3 +481,28 @@ def _insert_raw_asset(client: TestClient, asset_id: str, relative_path: str) -> 
             """,
             (asset_id, relative_path),
         )
+
+
+def _save_multiview_records(client: TestClient, job_id: str, reference_image_id: str):
+    return {
+        view: _save_multiview_image(client, job_id, reference_image_id, view, view)
+        for view in ("front", "left", "back")
+    }
+
+
+def _save_multiview_image(
+    client: TestClient,
+    job_id: str,
+    reference_image_id: str,
+    view: str,
+    prefix: str,
+):
+    return client.app.state.storage.save_image_bytes(
+        PNG_BYTES,
+        prefix,
+        ".png",
+        source="multiview",
+        related_job_id=job_id,
+        reference_image_id=reference_image_id,
+        view_name=view,
+    )

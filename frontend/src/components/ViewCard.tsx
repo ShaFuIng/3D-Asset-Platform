@@ -1,15 +1,15 @@
 import { resolveApiUrl } from '../api/client';
 import type { JobStatus, MultiviewName, MultiviewSlot } from '../types/api';
+import type { PendingViewAction } from '../context/WorkspaceContext';
 
-// UI state derived from the backend slot.
 type ViewState = 'empty' | 'loading' | 'review' | 'candidate' | 'accepted' | 'error';
 
 const VIEW_STATE_TEXT: Record<ViewState, string> = {
   empty: '尚未生成',
-  loading: '生成中…',
-  review: '等待確認',
+  loading: '生成中',
+  review: '待確認',
   candidate: 'Candidate 待確認',
-  accepted: '已接受 ✓',
+  accepted: '已接受',
   error: '錯誤',
 };
 
@@ -17,8 +17,8 @@ function isPending(status?: JobStatus) {
   return status === 'queued' || status === 'running';
 }
 
-function getViewState(slot: MultiviewSlot | undefined, isAcceptPending: boolean): ViewState {
-  if (isAcceptPending || (slot && isPending(slot.status))) {
+function getViewState(slot: MultiviewSlot | undefined, pendingAction?: PendingViewAction): ViewState {
+  if (pendingAction || (slot && isPending(slot.status))) {
     return 'loading';
   }
   if (slot?.error) {
@@ -37,28 +37,58 @@ type ViewCardProps = {
   view: MultiviewName;
   label: string;
   slot?: MultiviewSlot;
-  isAcceptPending: boolean;
+  pendingAction?: PendingViewAction;
+  editDraft: string;
+  isComfyAvailable: boolean;
+  comfyUnavailableReason?: string;
+  isOpenAIAvailable: boolean;
+  openAIUnavailableReason?: string;
   onAccept: (view: MultiviewName) => void;
-  onRegenerate: (view: MultiviewName) => void;
-  onZoom: (url: string) => void;
+  onLocalReroll: (view: MultiviewName) => void;
+  onOpenAIEdit: (view: MultiviewName) => void;
+  onEditDraftChange: (view: MultiviewName, value: string) => void;
+  onZoom: (view: MultiviewName) => void;
 };
 
-export function ViewCard({ view, label, slot, isAcceptPending, onAccept, onRegenerate, onZoom }: ViewCardProps) {
-  const state = getViewState(slot, isAcceptPending);
-  const image = slot?.candidateImage ?? slot?.currentImage;
-  const canAccept = Boolean(
-    slot && !isAcceptPending && !isPending(slot.status) && image && !(slot.accepted && !slot.candidateImage),
+export function ViewCard({
+  view,
+  label,
+  slot,
+  pendingAction,
+  editDraft,
+  isComfyAvailable,
+  comfyUnavailableReason,
+  isOpenAIAvailable,
+  openAIUnavailableReason,
+  onAccept,
+  onLocalReroll,
+  onOpenAIEdit,
+  onEditDraftChange,
+  onZoom,
+}: ViewCardProps) {
+  const state = getViewState(slot, pendingAction);
+  const slotPending = Boolean(slot && isPending(slot.status));
+  const image = slotPending ? slot?.currentImage : (slot?.candidateImage ?? slot?.currentImage);
+  const hasCurrentImage = Boolean(slot?.currentImage);
+  const versionCount = slot?.versions.length ?? 0;
+  const isBusy = Boolean(pendingAction || slotPending);
+  const canAccept = Boolean(slot && !isBusy && image && !(slot.accepted && !slot.candidateImage));
+  const canLocalReroll = Boolean(slot && hasCurrentImage && !isBusy && isComfyAvailable);
+  const canOpenAIEdit = Boolean(
+    slot && hasCurrentImage && !isBusy && isOpenAIAvailable && editDraft.trim(),
   );
-  const canRegenerate = Boolean(slot && !isAcceptPending && !isPending(slot.status));
 
   return (
     <article className="view-card" data-state={state}>
       <div className="view-card-header">
         <strong>{label}</strong>
-        <span className="badge" data-kind={state}>
-          {state === 'loading' && <span className="spinner" aria-hidden="true" />}
-          {VIEW_STATE_TEXT[state]}
-        </span>
+        <div className="view-card-header-badges">
+          {versionCount > 0 && <span className="view-version-count">{versionCount} 個版本</span>}
+          <span className="badge" data-kind={state}>
+            {state === 'loading' && <span className="spinner" aria-hidden="true" />}
+            {VIEW_STATE_TEXT[state]}
+          </span>
+        </div>
       </div>
 
       <div className="view-card-image-wrap">
@@ -68,21 +98,19 @@ export function ViewCard({ view, label, slot, isAcceptPending, onAccept, onRegen
             <button
               type="button"
               className="image-zoom-button"
-              aria-label={`放大檢視 ${label} 視圖`}
-              onClick={() => onZoom(resolveApiUrl(image.url))}
+              aria-label={`放大檢視 ${label} 視角`}
+              onClick={() => onZoom(view)}
             >
-              ⤢
+              放大
             </button>
           </>
         ) : (
-          <div className="view-placeholder">
-            {state === 'loading' ? '生成中…' : '尚未生成'}
-          </div>
+          <div className="view-placeholder">{state === 'loading' ? '生成中' : '尚未生成'}</div>
         )}
       </div>
 
       {state === 'candidate' && (
-        <p className="hint warning">新的 Candidate 尚未接受；接受後才會用於 3D 生成。</p>
+        <p className="hint warning">已有 Candidate 待確認；接受後才會用於多視角 3D。</p>
       )}
       {state === 'error' && slot?.error && <p className="hint error">{slot.error}</p>}
 
@@ -93,11 +121,38 @@ export function ViewCard({ view, label, slot, isAcceptPending, onAccept, onRegen
           disabled={!canAccept}
           onClick={() => onAccept(view)}
         >
-          {slot?.accepted && !slot.candidateImage ? '已接受' : 'Accept Candidate／接受候選'}
+          {slot?.accepted && !slot.candidateImage ? '已接受' : 'Accept Candidate'}
         </button>
-        <button type="button" disabled={!canRegenerate} onClick={() => onRegenerate(view)}>
-          Regenerate
-        </button>
+      </div>
+
+      <div className="view-regenerate-actions">
+        <div className="view-regenerate-group">
+          <button type="button" disabled={!canLocalReroll} onClick={() => onLocalReroll(view)}>
+            {pendingAction === 'local_reroll' ? '重新抽選中...' : '重新抽選（本機）'}
+          </button>
+          <p className="hint">使用固定視角提示詞與新 Seed，不消耗 OpenAI 額度。</p>
+          {!isComfyAvailable && comfyUnavailableReason && (
+            <p className="hint warning">{comfyUnavailableReason}</p>
+          )}
+        </div>
+
+        <div className="view-regenerate-group">
+          <label htmlFor={`edit-${view}`}>使用 GPT 調整</label>
+          <textarea
+            id={`edit-${view}`}
+            value={editDraft}
+            placeholder="描述要調整的部分，可直接輸入中文……"
+            disabled={isBusy || !hasCurrentImage || !isOpenAIAvailable}
+            onChange={(event) => onEditDraftChange(view, event.target.value)}
+          />
+          <button type="button" disabled={!canOpenAIEdit} onClick={() => onOpenAIEdit(view)}>
+            {pendingAction === 'openai_edit' ? 'GPT 調整中...' : '使用 GPT 調整'}
+          </button>
+          <p className="hint">此操作會使用 OpenAI API 額度。</p>
+          {!isOpenAIAvailable && openAIUnavailableReason && (
+            <p className="hint warning">{openAIUnavailableReason}</p>
+          )}
+        </div>
       </div>
     </article>
   );
