@@ -21,7 +21,7 @@ type JobPanelProps = {
 export function JobPanel({ selectedImage, viewState, jobEntry }: JobPanelProps) {
   const job = jobEntry?.job;
   const modelUrl = jobEntry?.modelUrl;
-  const hasGeneratedAllViews = viewState?.side === 'done' && viewState?.back === 'done';
+  const hasGeneratedAllViews = viewState?.left === 'done' && viewState?.back === 'done';
   const statusLabel = job ? job.status : jobEntry?.isCreatingJob ? '建立中...' : '尚未建立 Job';
 
   return (

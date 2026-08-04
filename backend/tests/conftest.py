@@ -92,6 +92,8 @@ def settings(tmp_path) -> Settings:
         storage_images_dir=tmp_path / "storage" / "images",
         storage_models_dir=tmp_path / "storage" / "models",
         workflow_path=tmp_path / "workflows" / "hunyuan3d_api.json",
+        qwen_multiview_workflow_path=tmp_path / "workflows" / "qwen_multiview_api.json",
+        hunyuan_multiview_workflow_path=tmp_path / "workflows" / "hunyuan_multiview_api.json",
         max_upload_bytes=1024,
         comfyui_job_timeout_seconds=0.01,
         comfyui_poll_interval_seconds=0.001,

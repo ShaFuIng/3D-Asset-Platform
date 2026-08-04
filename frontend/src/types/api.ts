@@ -76,6 +76,62 @@ export type JobResponse = {
   } | null;
 };
 
+export type MultiviewName = 'front' | 'left' | 'back';
+
+export type MultiviewProvider = 'local';
+
+export type MultiviewImageRef = {
+  imageId: string;
+  url: string;
+  filename: string;
+};
+
+export type MultiviewSlot = {
+  view: MultiviewName;
+  status: JobStatus;
+  currentImage: MultiviewImageRef | null;
+  candidateImage: MultiviewImageRef | null;
+  accepted: boolean;
+  error: string | null;
+  provider: MultiviewProvider;
+};
+
+export type CreateMultiviewJobResponse = {
+  jobId: string;
+  status: JobStatus;
+  provider: MultiviewProvider;
+  statusUrl: string;
+};
+
+export type MultiviewJobResponse = {
+  jobId: string;
+  status: JobStatus;
+  message: string;
+  provider: MultiviewProvider;
+  promptId: string | null;
+  referenceImage: MultiviewImageRef;
+  views: Record<MultiviewName, MultiviewSlot>;
+};
+
+export type MultiviewModelResult = {
+  geometryModelUrl: string | null;
+  texturedModelUrl: string | null;
+};
+
+export type MultiviewModelJobResponse = {
+  status: JobStatus;
+  message: string;
+  promptId: string | null;
+  geometryModel: {
+    available: boolean;
+    downloadUrl: string | null;
+  };
+  texturedModel: {
+    available: boolean;
+    downloadUrl: string | null;
+  };
+};
+
 export type ServiceHealthState = {
   status: ServiceStatus;
   message?: string;

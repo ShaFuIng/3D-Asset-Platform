@@ -4,8 +4,12 @@ import type {
   ChatMessage,
   ComfyHealthResponse,
   Create3DJobResponse,
+  CreateMultiviewJobResponse,
   GenerateImageResponse,
   JobResponse,
+  MultiviewJobResponse,
+  MultiviewModelJobResponse,
+  MultiviewName,
   OpenAIHealthResponse,
   UploadImageResponse,
 } from '../types/api';
@@ -86,6 +90,75 @@ export async function get3DJob(jobId: string, signal?: AbortSignal): Promise<Job
   return requestJson(`/api/3d/jobs/${jobId}`, { signal });
 }
 
+export async function createMultiviewJob(
+  referenceImageId: string,
+  signal?: AbortSignal,
+): Promise<CreateMultiviewJobResponse> {
+  const data = await requestJson<CreateMultiviewJobResponseBody>('/api/multiview/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reference_image_id: referenceImageId, provider: 'local' }),
+    signal,
+  });
+  return toCreateMultiviewJob(data);
+}
+
+export async function getMultiviewJob(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<MultiviewJobResponse> {
+  const data = await requestJson<MultiviewJobResponseBody>(`/api/multiview/jobs/${jobId}`, {
+    signal,
+  });
+  return toMultiviewJob(data);
+}
+
+export async function acceptMultiviewView(
+  jobId: string,
+  view: MultiviewName,
+  signal?: AbortSignal,
+): Promise<MultiviewJobResponse> {
+  const data = await requestJson<MultiviewJobResponseBody>(
+    `/api/multiview/jobs/${jobId}/views/${view}/accept`,
+    { method: 'POST', signal },
+  );
+  return toMultiviewJob(data);
+}
+
+export async function regenerateMultiviewView(
+  jobId: string,
+  view: MultiviewName,
+  signal?: AbortSignal,
+): Promise<MultiviewJobResponse> {
+  const data = await requestJson<MultiviewJobResponseBody>(
+    `/api/multiview/jobs/${jobId}/views/${view}/regenerate`,
+    { method: 'POST', signal },
+  );
+  return toMultiviewJob(data);
+}
+
+export async function createMultiviewModelJob(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<MultiviewModelJobResponse> {
+  const data = await requestJson<MultiviewModelJobResponseBody>(
+    `/api/multiview/jobs/${jobId}/model-job`,
+    { method: 'POST', signal },
+  );
+  return toMultiviewModelJob(data);
+}
+
+export async function getMultiviewModelJob(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<MultiviewModelJobResponse> {
+  const data = await requestJson<MultiviewModelJobResponseBody>(
+    `/api/multiview/jobs/${jobId}/model-job`,
+    { signal },
+  );
+  return toMultiviewModelJob(data);
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -107,6 +180,113 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return data as T;
+}
+
+type MultiviewImageRefBody = {
+  image_id: string;
+  filename: string;
+  url: string;
+};
+
+type MultiviewSlotBody = {
+  status: JobResponse['status'];
+  current_image: MultiviewImageRefBody | null;
+  candidate_image: MultiviewImageRefBody | null;
+  accepted: boolean;
+  error: string | null;
+  provider: 'local';
+};
+
+type CreateMultiviewJobResponseBody = {
+  job_id: string;
+  status: JobResponse['status'];
+  provider: 'local';
+  status_url: string;
+};
+
+type MultiviewJobResponseBody = {
+  job_id: string;
+  status: JobResponse['status'];
+  message: string;
+  provider: 'local';
+  prompt_id: string | null;
+  reference_image: MultiviewImageRefBody;
+  views: Record<MultiviewName, MultiviewSlotBody>;
+};
+
+type MultiviewModelJobResponseBody = {
+  status: JobResponse['status'];
+  message: string;
+  prompt_id: string | null;
+  geometry_model: {
+    available: boolean;
+    download_url: string | null;
+  };
+  textured_model: {
+    available: boolean;
+    download_url: string | null;
+  };
+};
+
+function toImageRef(image: MultiviewImageRefBody) {
+  return {
+    imageId: image.image_id,
+    filename: image.filename,
+    url: image.url,
+  };
+}
+
+function toCreateMultiviewJob(data: CreateMultiviewJobResponseBody): CreateMultiviewJobResponse {
+  return {
+    jobId: data.job_id,
+    status: data.status,
+    provider: data.provider,
+    statusUrl: data.status_url,
+  };
+}
+
+function toMultiviewJob(data: MultiviewJobResponseBody): MultiviewJobResponse {
+  return {
+    jobId: data.job_id,
+    status: data.status,
+    message: data.message,
+    provider: data.provider,
+    promptId: data.prompt_id,
+    referenceImage: toImageRef(data.reference_image),
+    views: {
+      front: toSlot('front', data.views.front),
+      left: toSlot('left', data.views.left),
+      back: toSlot('back', data.views.back),
+    },
+  };
+}
+
+function toSlot(view: MultiviewName, slot: MultiviewSlotBody) {
+  return {
+    view,
+    status: slot.status,
+    currentImage: slot.current_image ? toImageRef(slot.current_image) : null,
+    candidateImage: slot.candidate_image ? toImageRef(slot.candidate_image) : null,
+    accepted: slot.accepted,
+    error: slot.error,
+    provider: slot.provider,
+  };
+}
+
+function toMultiviewModelJob(data: MultiviewModelJobResponseBody): MultiviewModelJobResponse {
+  return {
+    status: data.status,
+    message: data.message,
+    promptId: data.prompt_id,
+    geometryModel: {
+      available: data.geometry_model.available,
+      downloadUrl: data.geometry_model.download_url,
+    },
+    texturedModel: {
+      available: data.textured_model.available,
+      downloadUrl: data.textured_model.download_url,
+    },
+  };
 }
 
 async function readJson<T>(response: Response): Promise<T> {

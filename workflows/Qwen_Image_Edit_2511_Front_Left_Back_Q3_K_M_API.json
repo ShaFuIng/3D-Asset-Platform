@@ -1,0 +1,263 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "Qwen_3Views/Qwen_3Views",
+      "images": [
+        "112:102",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "41": {
+    "inputs": {
+      "image": "螢幕擷取畫面 2026-07-27 115847.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "113": {
+    "inputs": {
+      "text": "<sks> front view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.\n<sks> left side view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.\n<sks> back view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.",
+      "delimiter": ""
+    },
+    "class_type": "TextToList",
+    "_meta": {
+      "title": "3个视角（Front → Left → Back）"
+    }
+  },
+  "112:93": {
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "112:95": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "112:100": {
+    "inputs": {
+      "prompt": "",
+      "clip": [
+        "112:93",
+        0
+      ],
+      "vae": [
+        "112:95",
+        0
+      ],
+      "image1": [
+        "112:106",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus"
+    }
+  },
+  "112:103": {
+    "inputs": {
+      "prompt": [
+        "113",
+        0
+      ],
+      "clip": [
+        "112:93",
+        0
+      ],
+      "vae": [
+        "112:95",
+        0
+      ],
+      "image1": [
+        "112:106",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlus (Positive)"
+    }
+  },
+  "112:110": {
+    "inputs": {
+      "lora_name": "Qwen-Image\\qwen-image-edit-2511-multiple-angles-lora.safetensors",
+      "strength_model": 1,
+      "model": [
+        "112:107",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "112:97": {
+    "inputs": {
+      "reference_latents_method": "index_timestep_zero",
+      "conditioning": [
+        "112:103",
+        0
+      ]
+    },
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {
+      "title": "Edit Model Reference Method"
+    }
+  },
+  "112:94": {
+    "inputs": {
+      "shift": 3.1,
+      "model": [
+        "112:110",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "112:96": {
+    "inputs": {
+      "reference_latents_method": "index_timestep_zero",
+      "conditioning": [
+        "112:100",
+        0
+      ]
+    },
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {
+      "title": "Edit Model Reference Method"
+    }
+  },
+  "112:98": {
+    "inputs": {
+      "strength": 1,
+      "pre_cfg": false,
+      "model": [
+        "112:94",
+        0
+      ]
+    },
+    "class_type": "CFGNorm",
+    "_meta": {
+      "title": "CFGNorm"
+    }
+  },
+  "112:106": {
+    "inputs": {
+      "image": [
+        "41",
+        0
+      ]
+    },
+    "class_type": "FluxKontextImageScale",
+    "_meta": {
+      "title": "FluxKontextImageScale"
+    }
+  },
+  "112:104": {
+    "inputs": {
+      "pixels": [
+        "112:106",
+        0
+      ],
+      "vae": [
+        "112:95",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "112:102": {
+    "inputs": {
+      "samples": [
+        "112:105",
+        0
+      ],
+      "vae": [
+        "112:95",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "112:105": {
+    "inputs": {
+      "seed": 2457618901337,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "112:98",
+        0
+      ],
+      "positive": [
+        "112:97",
+        0
+      ],
+      "negative": [
+        "112:96",
+        0
+      ],
+      "latent_image": [
+        "112:104",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "112:107": {
+    "inputs": {
+      "lora_name": "Qwen-Image\\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "112:116",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "112:116": {
+    "inputs": {
+      "unet_name": "qwen-image-edit-2511-Q3_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  }
+}

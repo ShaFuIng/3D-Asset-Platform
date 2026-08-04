@@ -551,6 +551,31 @@ code {
   text-align: center;
 }
 
+.view-slot-image {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: #eef3f1;
+  object-fit: contain;
+}
+
+.model-toggle,
+.model-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-toggle button[data-selected='true'] {
+  border-color: #245e91;
+  background: #245e91;
+}
+
+.download-link[aria-disabled='true'] {
+  pointer-events: none;
+  opacity: 0.48;
+}
+
 @media (max-width: 1180px) {
   .app-header,
   .workspace,
@@ -733,7 +758,7 @@ code {
   align-content: start;
 }
 
-/* Only 2 slots (side/back): the original image already counts as the front
+/* Only 2 slots (left/back): the original image already counts as the front
    view, so this grid mirrors .three-view-grid but with 2 columns instead of 3. */
 .lightbox-view-grid {
   display: grid;
@@ -745,7 +770,7 @@ code {
   gap: 10px;
 }
 
-/* Selectable view (front image, or a generated side/back placeholder) used to
+/* Selectable view (front image, or a generated left/back placeholder) used to
    pick which image_id create3DJob is called with. Resets button chrome so the
    selection ring below is the only visual change, not a blue button surface. */
 .lightbox-view-option {

@@ -77,7 +77,7 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Keyed by image_id so a previously generated side/back view, and any 3D
+  // Keyed by image_id so a previously generated left/back view, and any 3D
   // job created from ImageLightbox, survive switching the gallery selection
   // or closing/reopening the lightbox — see ImageGallery.tsx / ImageLightbox.tsx.
   // JobPanel reads jobsByImageId too, so job creation (triggered in the

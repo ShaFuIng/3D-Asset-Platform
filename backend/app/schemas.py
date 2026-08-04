@@ -45,6 +45,11 @@ class Create3DJobRequest(BaseModel):
     image_id: str = Field(min_length=1)
 
 
+class CreateMultiviewJobRequest(BaseModel):
+    reference_image_id: str = Field(min_length=1)
+    provider: Literal["local"] = "local"
+
+
 class JobStatus(str, Enum):
     queued = "queued"
     running = "running"
@@ -68,3 +73,48 @@ class JobResponse(BaseModel):
     message: str
     prompt_id: str | None
     result: JobResult | None
+
+
+class MultiviewImageRef(BaseModel):
+    image_id: str
+    filename: str
+    url: str
+
+
+class MultiviewSlotResponse(BaseModel):
+    status: JobStatus
+    current_image: MultiviewImageRef | None
+    candidate_image: MultiviewImageRef | None
+    accepted: bool
+    error: str | None
+    provider: Literal["local"]
+
+
+class CreateMultiviewJobResponse(BaseModel):
+    job_id: str
+    status: JobStatus
+    provider: Literal["local"]
+    status_url: str
+
+
+class MultiviewJobResponse(BaseModel):
+    job_id: str
+    status: JobStatus
+    message: str
+    provider: Literal["local"]
+    prompt_id: str | None
+    reference_image: MultiviewImageRef
+    views: dict[str, MultiviewSlotResponse]
+
+
+class MultiviewModelRef(BaseModel):
+    available: bool
+    download_url: str | None
+
+
+class MultiviewModelJobResponse(BaseModel):
+    status: JobStatus
+    message: str
+    prompt_id: str | None
+    geometry_model: MultiviewModelRef
+    textured_model: MultiviewModelRef

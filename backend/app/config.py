@@ -18,6 +18,8 @@ class Settings:
     storage_images_dir: Path
     storage_models_dir: Path
     workflow_path: Path
+    qwen_multiview_workflow_path: Path
+    hunyuan_multiview_workflow_path: Path
     max_upload_bytes: int
     comfyui_job_timeout_seconds: float
     comfyui_poll_interval_seconds: float
@@ -33,6 +35,10 @@ class Settings:
             storage_images_dir=root / "storage" / "images",
             storage_models_dir=root / "storage" / "models",
             workflow_path=root / "workflows" / "hunyuan3d_api.json",
+            qwen_multiview_workflow_path=(
+                root / "workflows" / "Qwen_Image_Edit_2511_Front_Left_Back_Q3_K_M_API.json"
+            ),
+            hunyuan_multiview_workflow_path=root / "workflows" / "多角度3D生成_API.json",
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024))),
             comfyui_job_timeout_seconds=float(os.getenv("COMFYUI_JOB_TIMEOUT_SECONDS", "900")),
             comfyui_poll_interval_seconds=float(os.getenv("COMFYUI_POLL_INTERVAL_SECONDS", "2")),

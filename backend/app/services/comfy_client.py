@@ -89,7 +89,7 @@ class ComfyClient:
     async def wait_for_glb_output(self, prompt_id: str) -> dict[str, str]:
         deadline = asyncio.get_running_loop().time() + self.settings.comfyui_job_timeout_seconds
         while asyncio.get_running_loop().time() < deadline:
-            history = await self._history(prompt_id)
+            history = await self.history(prompt_id)
             job = history.get(prompt_id)
             if job is None:
                 await asyncio.sleep(self.settings.comfyui_poll_interval_seconds)
@@ -122,23 +122,27 @@ class ComfyClient:
         return None
 
     async def download_output(self, output: dict[str, str], destination: Path) -> None:
+        content = await self.download_output_bytes(output, timeout=120.0)
+        if not self._is_valid_glb(content):
+            raise ComfyClientError("ComfyUI returned an invalid GLB file.")
+        try:
+            destination.write_bytes(content)
+        except OSError as exc:
+            raise ComfyClientError("ComfyUI GLB download failed.") from exc
+
+    async def download_output_bytes(self, output: dict[str, str], timeout: float = 120.0) -> bytes:
         params = {
             "filename": output.get("filename", ""),
             "subfolder": output.get("subfolder", ""),
             "type": output.get("type", "output"),
         }
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(f"{self.settings.comfyui_base_url}/view", params=params)
                 response.raise_for_status()
-                content = response.content
-                if not self._is_valid_glb(content):
-                    raise ComfyClientError("ComfyUI returned an invalid GLB file.")
-                destination.write_bytes(content)
-        except ComfyClientError:
-            raise
-        except (httpx.HTTPError, OSError) as exc:
-            raise ComfyClientError("ComfyUI GLB download failed.") from exc
+                return response.content
+        except httpx.HTTPError as exc:
+            raise ComfyClientError("ComfyUI output download failed.") from exc
 
     @staticmethod
     def _is_valid_glb(content: bytes) -> bool:
@@ -147,7 +151,7 @@ class ComfyClient:
         version, declared_length = struct.unpack("<II", content[4:12])
         return version == 2 and declared_length == len(content)
 
-    async def _history(self, prompt_id: str) -> dict[str, Any]:
+    async def history(self, prompt_id: str) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(f"{self.settings.comfyui_base_url}/history/{prompt_id}")

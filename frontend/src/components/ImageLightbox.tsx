@@ -5,19 +5,19 @@ import type { JobEntry } from './JobPanel';
 
 // The source image itself already counts as the "front" view of the three-view
 // set, so only these 2 extra views need to be generated here.
-export type ViewSlotId = 'side' | 'back';
+export type ViewSlotId = 'left' | 'back';
 export type ViewSlotStatus = 'idle' | 'generating' | 'done';
 export type ViewGenerationState = Record<ViewSlotId, ViewSlotStatus>;
 
 export const DEFAULT_VIEW_GENERATION_STATE: ViewGenerationState = {
-  side: 'idle',
+  left: 'idle',
   back: 'idle',
 };
 
 // Placeholder view slots, mirrors the slot styling in ThreeViewPage.tsx.
 // Real three-view generation is not wired up yet; this is UI-only.
 const VIEW_SLOTS: Array<{ id: ViewSlotId; title: string; description: string }> = [
-  { id: 'side', title: 'Side', description: '側面視圖' },
+  { id: 'left', title: 'Left', description: '左側視圖' },
   { id: 'back', title: 'Back', description: '背面視圖' },
 ];
 
@@ -27,7 +27,7 @@ type SelectableViewSlot = 'front' | ViewSlotId;
 
 const SLOT_LABELS: Record<SelectableViewSlot, string> = {
   front: '正面',
-  side: 'Side',
+  left: 'Left',
   back: 'Back',
 };
 
@@ -66,7 +66,7 @@ export function ImageLightbox({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // A selected side/back view stops being valid once it's no longer 'done'
+  // A selected left/back view stops being valid once it's no longer 'done'
   // (e.g. the user regenerates it), so drop the stale selection.
   useEffect(() => {
     if (selectedViewSlot && selectedViewSlot !== 'front' && viewState[selectedViewSlot] !== 'done') {
@@ -78,7 +78,7 @@ export function ImageLightbox({
     if (!selectedViewSlot) {
       return;
     }
-    // Side/Back views are still UI-only placeholders (see ViewGenerationState)
+    // Left/Back views are still UI-only placeholders (see ViewGenerationState)
     // with no distinct generated image asset, so every slot currently
     // resolves to the same real image_id as the front view. Once per-view
     // image generation exists, resolve each slot to its own image_id here.
@@ -124,7 +124,7 @@ export function ImageLightbox({
           <div className="lightbox-views-pane">
             <div className="section-header">
               <h2>其他視圖</h2>
-              <span>Side / Back</span>
+              <span>Left / Back</span>
             </div>
 
             <div className="lightbox-view-grid">

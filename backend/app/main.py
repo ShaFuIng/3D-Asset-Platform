@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Settings, settings
 from .errors import register_error_handlers
-from .routers import images, jobs_3d
+from .routers import images, jobs_3d, multiview
 from .services.comfy_client import ComfyClient, ComfyClientError
 from .services.jobs import JobStore
+from .services.multiview_jobs import MultiviewJobStore
+from .services.multiview_workflows import HunyuanMultiviewWorkflow, QwenMultiviewWorkflow
 from .services.openai_client import OpenAIImageClient
 from .storage import AssetStorage
 
@@ -15,8 +17,15 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     app.state.settings = app_settings
     app.state.storage = AssetStorage(app_settings)
     app.state.job_store = JobStore()
+    app.state.multiview_job_store = MultiviewJobStore()
     app.state.background_tasks = set()
     app.state.comfy_client = ComfyClient(app_settings)
+    app.state.qwen_multiview_workflow = QwenMultiviewWorkflow(
+        app_settings.qwen_multiview_workflow_path
+    )
+    app.state.hunyuan_multiview_workflow = HunyuanMultiviewWorkflow(
+        app_settings.hunyuan_multiview_workflow_path
+    )
     app.state.openai_client = OpenAIImageClient(app_settings)
 
     app.add_middleware(
@@ -32,6 +41,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     register_error_handlers(app)
     app.include_router(images.router)
     app.include_router(jobs_3d.router)
+    app.include_router(multiview.router)
     register_health_routes(app)
     return app
 
