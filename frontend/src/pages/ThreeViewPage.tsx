@@ -8,14 +8,15 @@ import {
   getMultiviewModelJob,
   regenerateMultiviewView,
   resolveApiUrl,
-  uploadImage,
 } from '../api/client';
 import { ModelViewer } from '../components/ModelViewer';
 import type {
+  ImageAsset,
   JobStatus,
   MultiviewJobResponse,
   MultiviewModelJobResponse,
   MultiviewName,
+  ServiceHealthState,
 } from '../types/api';
 
 const VIEW_ORDER: MultiviewName[] = ['front', 'left', 'back'];
@@ -42,8 +43,12 @@ function isPending(status?: JobStatus) {
   return status === 'queued' || status === 'running';
 }
 
-export function ThreeViewPage() {
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+type MultiviewPanelProps = {
+  selectedImage?: ImageAsset;
+  comfy: ServiceHealthState;
+};
+
+export function MultiviewPanel({ selectedImage, comfy }: MultiviewPanelProps) {
   const [job, setJob] = useState<MultiviewJobResponse | null>(null);
   const [modelJob, setModelJob] = useState<MultiviewModelJobResponse | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -67,6 +72,7 @@ export function ThreeViewPage() {
     ? resolveApiUrl(modelJob.texturedModel.downloadUrl)
     : null;
   const activeModelUrl = activeModelKind === 'textured' ? texturedUrl || geometryUrl : geometryUrl || texturedUrl;
+  const isComfyDisconnected = comfy.status !== 'connected';
 
   useEffect(() => {
     if (!job || !isPending(job.status)) {
@@ -114,7 +120,7 @@ export function ThreeViewPage() {
   }, [job?.jobId, modelJob?.status]);
 
   async function handleStartMultiview() {
-    if (!referenceFile || isStarting) {
+    if (!selectedImage || isStarting || isComfyDisconnected) {
       return;
     }
     setIsStarting(true);
@@ -122,8 +128,7 @@ export function ThreeViewPage() {
     setJob(null);
     setModelJob(null);
     try {
-      const uploaded = await uploadImage(referenceFile);
-      const created = await createMultiviewJob(uploaded.image_id);
+      const created = await createMultiviewJob(selectedImage.image_id);
       const nextJob = await getMultiviewJob(created.jobId);
       setJob(nextJob);
     } catch (nextError) {
@@ -173,7 +178,7 @@ export function ThreeViewPage() {
   }
 
   return (
-    <section className="three-view-page" aria-labelledby="three-view-title">
+    <section className="mode-panel" aria-labelledby="three-view-title">
       <div className="page-intro">
         <p className="eyebrow">Multiview workspace</p>
         <h2 id="three-view-title">三視圖 3D 生成</h2>
@@ -187,19 +192,26 @@ export function ThreeViewPage() {
             <span>{job ? job.status : 'idle'}</span>
           </div>
 
-          <label className="upload-control">
-            選擇 Reference 圖片
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              disabled={isStarting || isPending(job?.status)}
-              onChange={(event) => setReferenceFile(event.target.files?.[0] ?? null)}
-            />
-          </label>
-          {referenceFile && <p className="hint">{referenceFile.name}</p>}
-          <button type="button" disabled={!referenceFile || isStarting || isPending(job?.status)} onClick={handleStartMultiview}>
+          {selectedImage ? (
+            <div className="selected-image">
+              <img src={resolveApiUrl(selectedImage.url)} alt="Selected reference preview" />
+              <div>
+                <span>selected reference image_id</span>
+                <code>{selectedImage.image_id}</code>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state compact">請先從 Gallery 選擇一張 Reference 圖片。</div>
+          )}
+
+          <button
+            type="button"
+            disabled={!selectedImage || isStarting || isPending(job?.status) || isComfyDisconnected}
+            onClick={handleStartMultiview}
+          >
             {isStarting || isPending(job?.status) ? '生成三視圖中...' : '生成 Front / Left / Back'}
           </button>
+          {isComfyDisconnected && <p className="hint warning">ComfyUI 未連線，無法建立多視角工作。</p>}
 
           {job?.referenceImage && (
             <div className="selected-image">

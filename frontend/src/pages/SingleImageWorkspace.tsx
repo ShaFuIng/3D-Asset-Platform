@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ApiClientError,
   create3DJob,
@@ -9,12 +10,8 @@ import {
 } from '../api/client';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { ImageGallery } from '../components/ImageGallery';
-import {
-  DEFAULT_VIEW_GENERATION_STATE,
-  type ViewGenerationState,
-  type ViewSlotId,
-} from '../components/ImageLightbox';
 import { JobPanel, type JobEntry } from '../components/JobPanel';
+import { MultiviewPanel } from './ThreeViewPage';
 import type { ChatMessage, ImageAsset, ServiceHealthState } from '../types/api';
 import {
   createMessageId,
@@ -28,9 +25,7 @@ type SingleImageWorkspaceProps = {
 };
 
 const DEFAULT_JOB_ENTRY: JobEntry = { isCreatingJob: false };
-
-// Fake delay so the "generating" state is visible in the UI. No real API call here.
-const FAKE_VIEW_GENERATION_DELAY_MS = 1500;
+type WorkspaceMode = 'single' | 'multiview';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === 'AbortError') {
@@ -66,7 +61,13 @@ function toApiMessages(messages: ConversationMessage[]): ChatMessage[] {
     .slice(-20);
 }
 
+function getModeFromSearch(searchParams: URLSearchParams): WorkspaceMode {
+  return searchParams.get('mode') === 'multiview' ? 'multiview' : 'single';
+}
+
 export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [mode, setMode] = useState<WorkspaceMode>(() => getModeFromSearch(searchParams));
   const [prompt, setPrompt] = useState('');
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [previousResponseId, setPreviousResponseId] = useState<string>();
@@ -77,12 +78,6 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Keyed by image_id so a previously generated left/back view, and any 3D
-  // job created from ImageLightbox, survive switching the gallery selection
-  // or closing/reopening the lightbox — see ImageGallery.tsx / ImageLightbox.tsx.
-  // JobPanel reads jobsByImageId too, so job creation (triggered in the
-  // lightbox) and job display (JobPanel) always agree.
-  const [viewStatesByImageId, setViewStatesByImageId] = useState<Record<string, ViewGenerationState>>({});
   const [jobsByImageId, setJobsByImageId] = useState<Record<string, JobEntry>>({});
 
   const selectedImage = useMemo(
@@ -96,6 +91,10 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
     openai.status === 'checking'
       ? '正在檢查 OpenAI 設定。'
       : 'OpenAI API key 尚未設定，因此不能使用 Prompt 生成圖片。';
+
+  useEffect(() => {
+    setMode(getModeFromSearch(searchParams));
+  }, [searchParams]);
 
   function updateJobEntry(imageId: string, updater: (entry: JobEntry) => JobEntry) {
     setJobsByImageId((current) => ({
@@ -114,6 +113,10 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
     .join('|');
 
   useEffect(() => {
+    if (mode !== 'single') {
+      return;
+    }
+
     const pendingImageIds = Object.entries(jobsByImageId)
       .filter(([, entry]) => entry.job && (entry.job.status === 'queued' || entry.job.status === 'running'))
       .map(([imageId]) => imageId);
@@ -169,24 +172,7 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
       window.clearInterval(timerId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingJobsKey]);
-
-  function handleGenerateSlot(imageId: string, slotId: ViewSlotId) {
-    setViewStatesByImageId((current) => {
-      const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
-      if (imageState[slotId] === 'generating') {
-        return current;
-      }
-      return { ...current, [imageId]: { ...imageState, [slotId]: 'generating' } };
-    });
-
-    window.setTimeout(() => {
-      setViewStatesByImageId((current) => {
-        const imageState = current[imageId] ?? DEFAULT_VIEW_GENERATION_STATE;
-        return { ...current, [imageId]: { ...imageState, [slotId]: 'done' } };
-      });
-    }, FAKE_VIEW_GENERATION_DELAY_MS);
-  }
+  }, [mode, pendingJobsKey]);
 
   async function handleCreateJobForImage(imageId: string) {
     if (isComfyDisconnected || jobsByImageId[imageId]?.isCreatingJob) {
@@ -283,38 +269,71 @@ export function SingleImageWorkspace({ openai, comfy }: SingleImageWorkspaceProp
     setSelectedImageId(image.image_id);
   }
 
+  function handleModeChange(nextMode: WorkspaceMode) {
+    setMode(nextMode);
+    setSearchParams(nextMode === 'multiview' ? { mode: 'multiview' } : {});
+  }
+
   return (
-    <section className="workspace" aria-label="單圖轉 3D 工作區">
-      <ChatPanel
-        messages={conversation}
-        prompt={prompt}
-        isGenerating={isGenerating}
-        isUploading={isUploading}
-        isDisabled={isOpenAIDisabled}
-        disabledReason={openaiDisabledReason}
-        activityMessage={activityMessage}
-        errorMessage={errorMessage}
-        onPromptChange={setPrompt}
-        onSubmit={handleGenerateImage}
-        onUpload={handleUploadImage}
-      />
+    <section className="workspace-page" aria-label="3D 生成工作區">
+      <div className="workspace">
+        <ChatPanel
+          messages={conversation}
+          prompt={prompt}
+          isGenerating={isGenerating}
+          isUploading={isUploading}
+          isDisabled={isOpenAIDisabled}
+          disabledReason={openaiDisabledReason}
+          activityMessage={activityMessage}
+          errorMessage={errorMessage}
+          onPromptChange={setPrompt}
+          onSubmit={handleGenerateImage}
+          onUpload={handleUploadImage}
+        />
 
-      <ImageGallery
-        images={images}
-        selectedImageId={selectedImageId}
-        onSelect={handleSelectImage}
-        viewStatesByImageId={viewStatesByImageId}
-        onGenerateSlot={handleGenerateSlot}
-        jobsByImageId={jobsByImageId}
-        isComfyDisconnected={isComfyDisconnected}
-        onCreateJob={handleCreateJobForImage}
-      />
+        <ImageGallery
+          images={images}
+          selectedImageId={selectedImageId}
+          onSelect={handleSelectImage}
+        />
 
-      <JobPanel
-        selectedImage={selectedImage}
-        viewState={selectedImage ? viewStatesByImageId[selectedImage.image_id] : undefined}
-        jobEntry={selectedImage ? jobsByImageId[selectedImage.image_id] : undefined}
-      />
+        <section className="panel workspace-panel selected-reference-panel">
+          <div className="section-header">
+            <h2>Reference Image</h2>
+            <span>{selectedImage ? selectedImage.source : 'none'}</span>
+          </div>
+          {selectedImage ? (
+            <div className="selected-image">
+              <img src={resolveApiUrl(selectedImage.url)} alt="Selected reference preview" />
+              <div>
+                <span>目前選取 image_id</span>
+                <code>{selectedImage.image_id}</code>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state compact">請先從 Gallery 選擇一張圖片。</div>
+          )}
+          <div className="mode-toggle" role="group" aria-label="Workspace mode">
+            <button type="button" data-selected={mode === 'single'} onClick={() => handleModeChange('single')}>
+              Single Image
+            </button>
+            <button type="button" data-selected={mode === 'multiview'} onClick={() => handleModeChange('multiview')}>
+              Multiview
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {mode === 'single' ? (
+        <JobPanel
+          selectedImage={selectedImage}
+          jobEntry={selectedImage ? jobsByImageId[selectedImage.image_id] : undefined}
+          isComfyDisconnected={isComfyDisconnected}
+          onCreateJob={handleCreateJobForImage}
+        />
+      ) : (
+        <MultiviewPanel selectedImage={selectedImage} comfy={comfy} />
+      )}
     </section>
   );
 }

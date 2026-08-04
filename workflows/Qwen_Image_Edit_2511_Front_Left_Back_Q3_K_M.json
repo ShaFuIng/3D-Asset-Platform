@@ -213,7 +213,7 @@
         "Node name for S&R": "TextToList"
       },
       "widgets_values": [
-        "<sks> front view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.\n<sks> left side view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.\n<sks> back view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.",
+        "<sks> front view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.\n<sks> right side view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.\n<sks> back view, eye-level shot, medium shot, keep the subject identity, proportions, clothing, accessories, colors and background consistent; only change the camera viewpoint.",
         ""
       ],
       "color": "#243447",

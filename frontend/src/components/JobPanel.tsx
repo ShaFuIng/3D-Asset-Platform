@@ -1,10 +1,7 @@
 import { resolveApiUrl } from '../api/client';
 import type { ImageAsset, JobResponse } from '../types/api';
-import type { ViewGenerationState } from './ImageLightbox';
 import { ModelViewer } from './ModelViewer';
 
-// Job creation is triggered from ImageLightbox (see create3DJob call there),
-// so this is shared state read by both. Owned by SingleImageWorkspace.
 export type JobEntry = {
   job?: JobResponse;
   modelUrl?: string;
@@ -14,15 +11,16 @@ export type JobEntry = {
 
 type JobPanelProps = {
   selectedImage?: ImageAsset;
-  viewState?: ViewGenerationState;
   jobEntry?: JobEntry;
+  isComfyDisconnected: boolean;
+  onCreateJob: (imageId: string) => void;
 };
 
-export function JobPanel({ selectedImage, viewState, jobEntry }: JobPanelProps) {
+export function JobPanel({ selectedImage, jobEntry, isComfyDisconnected, onCreateJob }: JobPanelProps) {
   const job = jobEntry?.job;
   const modelUrl = jobEntry?.modelUrl;
-  const hasGeneratedAllViews = viewState?.left === 'done' && viewState?.back === 'done';
   const statusLabel = job ? job.status : jobEntry?.isCreatingJob ? '建立中...' : '尚未建立 Job';
+  const isCreatingJob = jobEntry?.isCreatingJob ?? false;
 
   return (
     <section className="panel workspace-panel model-panel">
@@ -43,9 +41,15 @@ export function JobPanel({ selectedImage, viewState, jobEntry }: JobPanelProps) 
         <div className="empty-state compact">請先選擇一張圖片。</div>
       )}
 
-      {selectedImage && (
-        <p className="hint">{hasGeneratedAllViews ? '已生成三視圖。' : '尚未生成三視圖。'}</p>
-      )}
+      {selectedImage && <p className="hint">使用目前選取圖片建立舊版單圖 3D Job。</p>}
+
+      <button
+        type="button"
+        disabled={!selectedImage || isComfyDisconnected || isCreatingJob}
+        onClick={() => selectedImage && onCreateJob(selectedImage.image_id)}
+      >
+        {isCreatingJob ? '正在建立 3D Job...' : '建立單圖 3D Job'}
+      </button>
 
       {jobEntry?.error && <p className="hint error">{jobEntry.error}</p>}
 

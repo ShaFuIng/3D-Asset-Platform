@@ -1,37 +1,18 @@
 import { useState } from 'react';
 import { resolveApiUrl } from '../api/client';
 import type { ImageAsset } from '../types/api';
-import {
-  DEFAULT_VIEW_GENERATION_STATE,
-  ImageLightbox,
-  type ViewGenerationState,
-  type ViewSlotId,
-} from './ImageLightbox';
-import type { JobEntry } from './JobPanel';
+import { ImageLightbox } from './ImageLightbox';
 
 type ImageGalleryProps = {
   images: ImageAsset[];
   selectedImageId?: string;
   onSelect: (image: ImageAsset) => void;
-  // View-generation and job state are owned by SingleImageWorkspace (job
-  // creation is triggered here but displayed in JobPanel); this component
-  // just resolves the entry for whichever image's lightbox is open.
-  viewStatesByImageId: Record<string, ViewGenerationState>;
-  onGenerateSlot: (imageId: string, slotId: ViewSlotId) => void;
-  jobsByImageId: Record<string, JobEntry>;
-  isComfyDisconnected: boolean;
-  onCreateJob: (imageId: string) => void;
 };
 
 export function ImageGallery({
   images,
   selectedImageId,
   onSelect,
-  viewStatesByImageId,
-  onGenerateSlot,
-  jobsByImageId,
-  isComfyDisconnected,
-  onCreateJob,
 }: ImageGalleryProps) {
   // Lightbox open/close state lives here since this is where the trigger lives.
   const [lightboxImage, setLightboxImage] = useState<ImageAsset>();
@@ -71,11 +52,6 @@ export function ImageGallery({
         <ImageLightbox
           key={lightboxImage.image_id}
           image={lightboxImage}
-          viewState={viewStatesByImageId[lightboxImage.image_id] ?? DEFAULT_VIEW_GENERATION_STATE}
-          onGenerateSlot={(slotId) => onGenerateSlot(lightboxImage.image_id, slotId)}
-          jobEntry={jobsByImageId[lightboxImage.image_id]}
-          isComfyDisconnected={isComfyDisconnected}
-          onCreateJob={onCreateJob}
           onClose={() => setLightboxImage(undefined)}
         />
       )}

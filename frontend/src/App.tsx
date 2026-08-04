@@ -8,7 +8,6 @@ import {
 } from './api/client';
 import { ServiceStatusPanel } from './components/ServiceStatusPanel';
 import { SingleImageWorkspace } from './pages/SingleImageWorkspace';
-import { ThreeViewPage } from './pages/ThreeViewPage';
 import type { ServiceHealthState } from './types/api';
 
 const checkingState: ServiceHealthState = { status: 'checking' };
@@ -61,7 +60,7 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<SingleImageWorkspace openai={openai} comfy={comfy} />} />
-        <Route path="/three-view" element={<ThreeViewPage />} />
+        <Route path="/three-view" element={<Navigate to="/?mode=multiview" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </main>
