@@ -9,6 +9,10 @@ type StageShellProps = {
   current: StageId;
   pipeline?: Pipeline | null;
   stepperImageId?: string;
+  // Set to false on recovery screens (missing job/model): hides the session
+  // stepper instead of falling back to the currently selected image, which
+  // would show an unrelated image's stage progress.
+  showSessionStepper?: boolean;
   eyebrow: string;
   title: string;
   actions?: ReactNode;
@@ -22,6 +26,7 @@ type StageShellProps = {
 export function StageShell({
   current,
   stepperImageId,
+  showSessionStepper = true,
   eyebrow,
   title,
   actions,
@@ -35,13 +40,15 @@ export function StageShell({
     hasActiveJobs,
   } = useWorkspace();
 
-  const items = getStageNavItems({
-    imageId: stepperImageId ?? selectedImageId,
-    pipelineByImageId,
-    singleJobsByImageId,
-    multiviewByImageId,
-    currentStage: current,
-  });
+  const items = showSessionStepper
+    ? getStageNavItems({
+        imageId: stepperImageId ?? selectedImageId,
+        pipelineByImageId,
+        singleJobsByImageId,
+        multiviewByImageId,
+        currentStage: current,
+      })
+    : [];
   const currentIndex = items.findIndex((item) => item.id === current);
 
   return (
@@ -51,35 +58,43 @@ export function StageShell({
           ← 回到首頁
         </Link>
 
-        <nav className="stage-stepper" aria-label="工作流程階段">
-          {items.map((item) => {
-            const label = (
-              <>
-                <span className="step-number">{String(item.index + 1).padStart(2, '0')}</span>
-                <span className="step-label">
-                  {item.label}
-                  <small>{item.en}</small>
-                </span>
-              </>
-            );
-            const canNavigate = Boolean(item.destination) && item.state !== 'current';
-            return (
-              <span className="step" data-state={item.state} key={item.id}>
-                {canNavigate && item.destination ? (
-                  <Link to={item.destination}>{label}</Link>
-                ) : (
-                  <span className="step-static" title={item.note}>
-                    {label}
+        {showSessionStepper ? (
+          <nav className="stage-stepper" aria-label="工作流程階段">
+            {items.map((item) => {
+              const label = (
+                <>
+                  <span className="step-number">{String(item.index + 1).padStart(2, '0')}</span>
+                  <span className="step-label">
+                    {item.label}
+                    <small>{item.en}</small>
                   </span>
-                )}
-              </span>
-            );
-          })}
-        </nav>
+                </>
+              );
+              const canNavigate = Boolean(item.destination) && item.state !== 'current';
+              return (
+                <span className="step" data-state={item.state} key={item.id}>
+                  {canNavigate && item.destination ? (
+                    <Link to={item.destination}>{label}</Link>
+                  ) : (
+                    <span className="step-static" title={item.note}>
+                      {label}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+        ) : (
+          <span className="stage-stepper-empty" aria-hidden="true">
+            NO SESSION // —
+          </span>
+        )}
 
-        <span className="stage-code" aria-hidden="true">
-          SEC.{String(currentIndex + 1).padStart(2, '0')} // {items[currentIndex]?.en ?? '—'}
-        </span>
+        {showSessionStepper && (
+          <span className="stage-code" aria-hidden="true">
+            SEC.{String(currentIndex + 1).padStart(2, '0')} // {items[currentIndex]?.en ?? '—'}
+          </span>
+        )}
       </div>
 
       {hasActiveJobs && (
@@ -91,9 +106,11 @@ export function StageShell({
       <header className="stage-header">
         <p className="eyebrow">{eyebrow}</p>
         <h2>{title}</h2>
-        <span className="stage-index" aria-hidden="true">
-          {String(currentIndex + 1).padStart(2, '0')}
-        </span>
+        {showSessionStepper && (
+          <span className="stage-index" aria-hidden="true">
+            {String(currentIndex + 1).padStart(2, '0')}
+          </span>
+        )}
       </header>
 
       <div className="stage-body">{children}</div>

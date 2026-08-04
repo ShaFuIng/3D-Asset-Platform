@@ -26,13 +26,14 @@
 - 圖片／模型搜尋、篩選、預覽、下載、Trash、Restore、Permanent Delete
 - Three.js Original／Clay／Normal／Wireframe 模型檢查
 - Grid／Axes、模型統計、相機重設與無陰影多方向補光
+- Game UI 第一版、首頁三區布局、orbital workspace 入口與統一五階段導覽
 
 目前尚未完成：
 
 - Job、Multiview 工作階段與版本歷史的跨重啟持久化
 - Mesh 拆分、材質編輯、拓樸處理與骨架／IK
 - 多 worker 共用狀態與正式任務佇列
-- 完整遊戲風格 UI 與動畫
+- 完整逐頁 UI QA、RWD 細節與正式視覺 polish
 - 正式環境的長時間生成與部署驗證
 
 ## 環境與版本
@@ -243,7 +244,7 @@ npm run typecheck
 npm run build
 ```
 
-2026-08-04 兩項皆通過。Vite 仍會提示既有 chunk size warning，不影響建置完成。
+2026-08-05 兩項皆通過。Vite 仍會提示既有 chunk size warning，不影響建置完成。
 
 ### 人工驗證
 
@@ -254,6 +255,7 @@ npm run build
 - Candidate 接受、歷史版本瀏覽與回復
 - Asset Library Trash／Restore／Permanent Delete
 - Reference、Asset Library 與 Multiview Lightbox 的功能隔離
+- Game UI 導覽規則、Recovery stepper 與 Lightbox Set Candidate 錯誤顯示的程式檢查
 
 ## 停止服務
 

@@ -51,8 +51,13 @@ export function ChatPanel({
     <section className="panel chat-panel">
       <div className="section-header">
         <h2>對話</h2>
-        <button type="button" className="subtle-button" disabled={isGenerating} onClick={handleStartNewConversation}>
-          新對話
+        <button
+          type="button"
+          className="new-conversation-button"
+          disabled={isGenerating}
+          onClick={handleStartNewConversation}
+        >
+          ＋ 開始新的對話
         </button>
       </div>
 

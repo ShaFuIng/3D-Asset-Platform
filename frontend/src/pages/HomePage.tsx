@@ -154,12 +154,17 @@ export function HomePage({ backend, openai, comfy }: HomePageProps) {
           className="home-center home-center-entry stagger par-tilt"
           style={staggerStyle(3)}
           to="/reference"
-          aria-label="開始新資產：前往 Reference 階段"
+          aria-label="進入資產工作區：前往 Reference 階段，保留目前工作階段狀態"
         >
           <OrbitalDevice />
           <span className="home-center-cta">
-            <span className="home-center-cta-sub">NEW ASSET // INITIATE</span>
-            <span className="home-center-cta-title">開始新資產</span>
+            <span className="home-center-cta-text">
+              <span className="home-center-cta-sub">ASSET WORKSPACE // ENTER</span>
+              <span className="home-center-cta-title">進入資產工作區</span>
+            </span>
+            <span className="home-center-cta-arrow" aria-hidden="true">
+              →
+            </span>
           </span>
         </Link>
 

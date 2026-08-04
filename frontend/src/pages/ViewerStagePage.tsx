@@ -21,7 +21,13 @@ export function ViewerStagePage() {
 
   if (!routed) {
     return (
-      <StageShell current="inspect" pipeline={pipeline} eyebrow="INSPECT" title="找不到這個模型">
+      <StageShell
+        current="inspect"
+        pipeline={pipeline}
+        showSessionStepper={false}
+        eyebrow="INSPECT"
+        title="找不到這個模型"
+      >
         <section className="panel">
           <p>這個模型不存在於目前的工作階段。頁面可能經過重新整理，記憶體中的追蹤資訊已重置（已生成的檔案仍保留在後端）。</p>
           <div className="recovery-actions">

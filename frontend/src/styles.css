@@ -617,10 +617,10 @@ code {
   display: grid;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px dashed #cbd5d1;
+  border: 1px dashed var(--gui-line-strong);
   border-radius: 8px;
-  background: #eef3f1;
-  color: #64748b;
+  background: transparent;
+  color: var(--gui-text-3);
   padding: 16px;
   text-align: center;
 }
@@ -1433,33 +1433,49 @@ code {
   gap: 16px;
 }
 
+/* Mode cards on the dark stage: unselected = slightly raised cold-grey
+   surface; hover/focus = brighter surface + accent left marker (no
+   translate, so no horizontal overflow); selected = deeper surface with a
+   signal left marker, child text re-specified for contrast. */
 .mode-card {
   display: grid;
   gap: 10px;
   align-content: start;
   padding: 20px;
-  border: 1px solid #d3dce1;
+  border: 1px solid var(--gui-line);
+  border-left-width: 3px;
   border-radius: 8px;
-  background: #ffffff;
-  color: #243238;
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
   text-align: left;
 }
 
 .mode-card:hover {
-  border-color: #6d9fc4;
+  border-left-color: var(--gui-accent);
+  background: var(--gui-bg-3);
 }
 
-.mode-card[data-selected='true'] {
-  border-color: #245e91;
-  box-shadow: 0 0 0 2px rgba(36, 94, 145, 0.18);
+.mode-card:focus-visible {
+  border-color: var(--gui-line-strong);
+  border-left-color: var(--gui-accent);
+  background: var(--gui-bg-3);
+}
+
+.mode-card[data-selected='true'],
+.mode-card[data-selected='true']:hover {
+  border-color: var(--gui-line-strong);
+  border-left-color: var(--gui-signal);
+  background: var(--gui-bg-1);
+  box-shadow: none;
 }
 
 .mode-card strong {
+  color: var(--gui-text-1);
   font-size: 1.15rem;
 }
 
 .mode-card-eyebrow {
-  color: #507fa8;
+  color: var(--gui-accent);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -1467,16 +1483,21 @@ code {
 }
 
 .mode-card-flow {
-  color: #64748b;
+  color: var(--gui-text-2);
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
 
 .mode-card-desc {
-  color: #64748b;
+  color: var(--gui-text-2);
   font-size: 0.92rem;
   font-weight: 400;
   line-height: 1.5;
+}
+
+.mode-card[data-selected='true'] .mode-card-flow,
+.mode-card[data-selected='true'] .mode-card-desc {
+  color: var(--gui-text-2);
 }
 
 /* Multiview views stage */
@@ -1505,22 +1526,23 @@ code {
   align-content: start;
   min-width: 0;
   padding: 14px;
-  border: 1px solid #d3dce1;
+  border: 1px solid var(--gui-line);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
 }
 
 .view-card[data-state='accepted'] {
-  border-color: #047857;
+  border-color: var(--gui-ok);
 }
 
 .view-card[data-state='candidate'],
 .view-card[data-state='review'] {
-  border-color: #245e91;
+  border-color: var(--gui-accent);
 }
 
 .view-card[data-state='error'] {
-  border-color: #b42318;
+  border-color: var(--gui-err);
 }
 
 .view-card-header {
@@ -1538,7 +1560,7 @@ code {
 }
 
 .view-version-count {
-  color: #64748b;
+  color: var(--gui-text-2);
   font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
@@ -1558,15 +1580,21 @@ code {
 }
 
 .view-card-accept:not(:disabled) {
-  border-color: #245e91;
-  background: #245e91;
+  border-color: var(--gui-accent);
+  background: var(--gui-accent-dim);
+  color: var(--gui-accent-hi);
+}
+
+.view-card-accept:not(:disabled):hover {
+  border-color: var(--gui-accent-hi);
+  background: rgba(47, 212, 196, 0.2);
 }
 
 .view-regenerate-actions {
   display: grid;
   gap: 12px;
   padding-top: 10px;
-  border-top: 1px solid #dbe4e0;
+  border-top: 1px solid var(--gui-line);
 }
 
 .view-regenerate-group {
@@ -1575,7 +1603,7 @@ code {
 }
 
 .view-regenerate-group label {
-  color: #334155;
+  color: var(--gui-text-1);
   font-size: 0.85rem;
   font-weight: 700;
 }
@@ -1653,7 +1681,7 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #a16207;
+  color: var(--gui-warn);
   font-weight: 700;
 }
 
@@ -1666,7 +1694,7 @@ code {
 }
 
 .recovery-actions a:not(.primary-action-link) {
-  color: #245e91;
+  color: var(--gui-accent-hi);
   font-weight: 700;
 }
 
@@ -3245,39 +3273,76 @@ input::placeholder {
     box-shadow var(--gui-dur-fast) var(--gui-ease-out);
 }
 
-.home-center-entry:hover {
+.home-center-entry:hover,
+.home-center-entry:focus-visible {
   border-color: var(--gui-accent);
   box-shadow: var(--gui-glow-accent);
 }
 
-.home-center-entry:hover .orbital-cube {
+.home-center-entry:hover .orbital-cube,
+.home-center-entry:focus-visible .orbital-cube {
   border-color: var(--gui-accent-hi);
 }
 
+/* Primary CTA: an info band overlapping the orbital core's lower edge —
+   near the visual core, not at the bottom of the device. pointer-events
+   stay off so the whole orbital area remains one click target (the Link). */
 .home-center-cta {
   position: absolute;
-  right: 0;
-  bottom: 18px;
-  left: 0;
+  top: 70%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: calc(100% - 40px);
+  padding: 14px 22px;
+  transform: translateX(-50%);
+  border: 1px solid var(--gui-line-strong);
+  background: rgba(7, 9, 12, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  transition:
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    background var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.home-center-cta-text {
   display: grid;
   gap: 4px;
-  justify-items: center;
-  pointer-events: none;
+  min-width: 0;
 }
 
 .home-center-cta-title {
   color: var(--gui-text-1);
-  font-size: 1.25rem;
+  font-size: clamp(1.3rem, 1rem + 1.4vw, 1.9rem);
   font-weight: 700;
   letter-spacing: 0.06em;
 }
 
 .home-center-cta-sub {
-  color: var(--gui-accent);
+  color: var(--gui-signal);
   font-family: var(--gui-mono);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+.home-center-cta-arrow {
+  flex-shrink: 0;
+  color: var(--gui-signal);
+  font-size: 1.5rem;
+  transition: transform var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.home-center-entry:hover .home-center-cta,
+.home-center-entry:focus-visible .home-center-cta {
+  border-color: var(--gui-signal);
+  background: rgba(10, 14, 18, 0.94);
+}
+
+.home-center-entry:hover .home-center-cta-arrow,
+.home-center-entry:focus-visible .home-center-cta-arrow {
+  transform: translateX(5px);
 }
 
 /* Right rail: five-stage session navigation */
@@ -3435,6 +3500,62 @@ input::placeholder {
 @media (prefers-reduced-motion: reduce) {
   .session-nav-item[data-state='available']:hover,
   .session-nav-item[data-state='done']:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   GAME UI REDESIGN — Round 3 fixes
+   Home CTA reposition, new-conversation button, session-stepper opt-out,
+   reduced-motion addition for the CTA arrow.
+   ========================================================================== */
+
+/* ChatPanel: dedicated "start new conversation" entry. Clearly above
+   auxiliary text, still below the primary generate action. */
+.new-conversation-button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.new-conversation-button:not(:disabled):hover {
+  border-color: var(--gui-accent);
+  background: var(--gui-bg-3);
+  color: var(--gui-accent-hi);
+}
+
+.new-conversation-button:focus-visible {
+  border-color: var(--gui-accent);
+  color: var(--gui-accent-hi);
+}
+
+/* Recovery screens (missing job/model): replaces the session stepper so no
+   unrelated selected-image progress is shown. */
+.stage-stepper-empty {
+  justify-self: center;
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .home-center-cta {
+    gap: 12px;
+    padding: 10px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-center-entry:hover .home-center-cta-arrow,
+  .home-center-entry:focus-visible .home-center-cta-arrow {
     transform: none;
   }
 }

@@ -152,7 +152,13 @@ export function JobProgressPage() {
 
 function MissingJob({ reason }: { reason: string }) {
   return (
-    <StageShell current="generate" pipeline={null} eyebrow="GENERATE" title="找不到這個生成工作">
+    <StageShell
+      current="generate"
+      pipeline={null}
+      showSessionStepper={false}
+      eyebrow="GENERATE"
+      title="找不到這個生成工作"
+    >
       <section className="panel">
         <p>{reason}</p>
         <div className="recovery-actions">
