@@ -51,6 +51,11 @@ export type MultiviewModelKind = 'geometry' | 'textured';
 export type PendingViewAction = 'accept' | 'set_candidate' | RegenerateStrategy;
 export type PendingViewActions = Partial<Record<MultiviewName, PendingViewAction>>;
 
+export type ViewCandidateResult = {
+  ok: boolean;
+  error: string | null;
+};
+
 export type MultiviewWorkspace = {
   job: MultiviewJobResponse | null;
   modelJob: MultiviewModelJobResponse | null;
@@ -174,7 +179,7 @@ export type WorkspaceContextValue = {
     imageId: string,
     view: MultiviewName,
     versionImageId: string,
-  ) => Promise<boolean>;
+  ) => Promise<ViewCandidateResult>;
   regenerateView: (
     imageId: string,
     view: MultiviewName,
@@ -824,12 +829,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     imageId: string,
     view: MultiviewName,
     versionImageId: string,
-  ): Promise<boolean> {
+  ): Promise<ViewCandidateResult> {
     const lock = viewActionLockRef.current;
     const job = multiviewByImageId[imageId]?.job;
     const lockKey = job ? `${imageId}:${job.jobId}:${view}` : `${imageId}:${view}`;
     if (!job || lock.has(lockKey) || isPendingStatus(job.status) || isPendingStatus(job.views[view].status)) {
-      return false;
+      return { ok: false, error: null };
     }
     lock.add(lockKey);
     setViewActionPending(imageId, view, 'set_candidate');
@@ -839,13 +844,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const nextJob = await setMultiviewViewCandidate(expectedJobId, view, versionImageId);
       updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({ ...workspace, job: nextJob }));
-      return true;
+      return { ok: true, error: null };
     } catch (error) {
+      const message = getErrorMessage(error);
       updateMultiviewEntryIfJob(imageId, expectedJobId, (workspace) => ({
         ...workspace,
-        error: getErrorMessage(error),
+        error: message,
       }));
-      return false;
+      return { ok: false, error: message };
     } finally {
       lock.delete(lockKey);
       setViewActionPending(imageId, view);

@@ -617,10 +617,10 @@ code {
   display: grid;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px dashed #cbd5d1;
+  border: 1px dashed var(--gui-line-strong);
   border-radius: 8px;
-  background: #eef3f1;
-  color: #64748b;
+  background: transparent;
+  color: var(--gui-text-3);
   padding: 16px;
   text-align: center;
 }
@@ -1433,33 +1433,49 @@ code {
   gap: 16px;
 }
 
+/* Mode cards on the dark stage: unselected = slightly raised cold-grey
+   surface; hover/focus = brighter surface + accent left marker (no
+   translate, so no horizontal overflow); selected = deeper surface with a
+   signal left marker, child text re-specified for contrast. */
 .mode-card {
   display: grid;
   gap: 10px;
   align-content: start;
   padding: 20px;
-  border: 1px solid #d3dce1;
+  border: 1px solid var(--gui-line);
+  border-left-width: 3px;
   border-radius: 8px;
-  background: #ffffff;
-  color: #243238;
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
   text-align: left;
 }
 
 .mode-card:hover {
-  border-color: #6d9fc4;
+  border-left-color: var(--gui-accent);
+  background: var(--gui-bg-3);
 }
 
-.mode-card[data-selected='true'] {
-  border-color: #245e91;
-  box-shadow: 0 0 0 2px rgba(36, 94, 145, 0.18);
+.mode-card:focus-visible {
+  border-color: var(--gui-line-strong);
+  border-left-color: var(--gui-accent);
+  background: var(--gui-bg-3);
+}
+
+.mode-card[data-selected='true'],
+.mode-card[data-selected='true']:hover {
+  border-color: var(--gui-line-strong);
+  border-left-color: var(--gui-signal);
+  background: var(--gui-bg-1);
+  box-shadow: none;
 }
 
 .mode-card strong {
+  color: var(--gui-text-1);
   font-size: 1.15rem;
 }
 
 .mode-card-eyebrow {
-  color: #507fa8;
+  color: var(--gui-accent);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -1467,16 +1483,21 @@ code {
 }
 
 .mode-card-flow {
-  color: #64748b;
+  color: var(--gui-text-2);
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
 
 .mode-card-desc {
-  color: #64748b;
+  color: var(--gui-text-2);
   font-size: 0.92rem;
   font-weight: 400;
   line-height: 1.5;
+}
+
+.mode-card[data-selected='true'] .mode-card-flow,
+.mode-card[data-selected='true'] .mode-card-desc {
+  color: var(--gui-text-2);
 }
 
 /* Multiview views stage */
@@ -1505,22 +1526,23 @@ code {
   align-content: start;
   min-width: 0;
   padding: 14px;
-  border: 1px solid #d3dce1;
+  border: 1px solid var(--gui-line);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
 }
 
 .view-card[data-state='accepted'] {
-  border-color: #047857;
+  border-color: var(--gui-ok);
 }
 
 .view-card[data-state='candidate'],
 .view-card[data-state='review'] {
-  border-color: #245e91;
+  border-color: var(--gui-accent);
 }
 
 .view-card[data-state='error'] {
-  border-color: #b42318;
+  border-color: var(--gui-err);
 }
 
 .view-card-header {
@@ -1538,7 +1560,7 @@ code {
 }
 
 .view-version-count {
-  color: #64748b;
+  color: var(--gui-text-2);
   font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
@@ -1558,15 +1580,21 @@ code {
 }
 
 .view-card-accept:not(:disabled) {
-  border-color: #245e91;
-  background: #245e91;
+  border-color: var(--gui-accent);
+  background: var(--gui-accent-dim);
+  color: var(--gui-accent-hi);
+}
+
+.view-card-accept:not(:disabled):hover {
+  border-color: var(--gui-accent-hi);
+  background: rgba(47, 212, 196, 0.2);
 }
 
 .view-regenerate-actions {
   display: grid;
   gap: 12px;
   padding-top: 10px;
-  border-top: 1px solid #dbe4e0;
+  border-top: 1px solid var(--gui-line);
 }
 
 .view-regenerate-group {
@@ -1575,7 +1603,7 @@ code {
 }
 
 .view-regenerate-group label {
-  color: #334155;
+  color: var(--gui-text-1);
   font-size: 0.85rem;
   font-weight: 700;
 }
@@ -1653,7 +1681,7 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #a16207;
+  color: var(--gui-warn);
   font-weight: 700;
 }
 
@@ -1666,7 +1694,7 @@ code {
 }
 
 .recovery-actions a:not(.primary-action-link) {
-  color: #245e91;
+  color: var(--gui-accent-hi);
   font-weight: 700;
 }
 
@@ -1907,5 +1935,1734 @@ code {
 
   .library-modal {
     padding: 12px;
+  }
+}
+
+/* ==========================================================================
+   GAME UI REDESIGN — Round 1
+   Industrial terminal / game main-menu visual language.
+   Appended after the legacy styles: equal-specificity rules here win.
+   Legacy rules are intentionally left in place until the new screens are
+   confirmed stable.
+   ========================================================================== */
+
+/* ===== Design tokens ===== */
+:root {
+  /* color */
+  --gui-bg-0: #07090c;
+  --gui-bg-1: #0c1116;
+  --gui-bg-2: #121a21;
+  --gui-bg-3: #1a242d;
+  --gui-line: #232e38;
+  --gui-line-strong: #3a4a57;
+  --gui-text-1: #e8eef2;
+  --gui-text-2: #9fb0bb;
+  --gui-text-3: #5c6c77;
+  --gui-accent: #2fd4c4;
+  --gui-accent-hi: #5ff0e0;
+  --gui-accent-dim: rgba(47, 212, 196, 0.12);
+  --gui-signal: #e8c33d;
+  --gui-ok: #3fce96;
+  --gui-warn: #e8a33d;
+  --gui-err: #e0604f;
+
+  /* typography */
+  --gui-font:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --gui-mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+
+  /* spacing (4px base) */
+  --gui-s1: 4px;
+  --gui-s2: 8px;
+  --gui-s3: 12px;
+  --gui-s4: 16px;
+  --gui-s5: 24px;
+  --gui-s6: 32px;
+  --gui-s7: 48px;
+
+  /* borders / corners */
+  --gui-radius: 2px;
+  --gui-notch: 12px;
+
+  /* shadows / glow */
+  --gui-shadow-panel: 0 10px 36px rgba(0, 0, 0, 0.5);
+  --gui-glow-accent: 0 0 18px rgba(47, 212, 196, 0.16);
+
+  /* z-index */
+  --gui-z-bg: 0;
+  --gui-z-content: 1;
+  --gui-z-sticky: 5;
+  --gui-z-overlay: 10;
+  --gui-z-modal: 20;
+
+  /* motion */
+  --gui-dur-fast: 140ms;
+  --gui-dur-med: 220ms;
+  --gui-dur-slow: 420ms;
+  --gui-ease-out: cubic-bezier(0.22, 0.68, 0.32, 1);
+  --gui-ease-mech: cubic-bezier(0.3, 0.7, 0.3, 1);
+
+  color: var(--gui-text-1);
+  background: var(--gui-bg-0);
+}
+
+body {
+  background: var(--gui-bg-0);
+}
+
+/* ===== Global background: fine grid + vignette (static, decorative) ===== */
+.app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: var(--gui-z-bg);
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(88, 118, 135, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88, 118, 135, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.app::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: var(--gui-z-bg);
+  pointer-events: none;
+  background: radial-gradient(ellipse 90% 70% at 50% 30%, transparent 55%, rgba(0, 0, 0, 0.5));
+}
+
+.app {
+  position: relative;
+  z-index: var(--gui-z-content);
+}
+
+/* ===== Base element overrides (dark terminal) ===== */
+button,
+.download-link,
+.upload-control {
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  font-weight: 600;
+  transition:
+    transform var(--gui-dur-fast) var(--gui-ease-mech),
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    background var(--gui-dur-fast) var(--gui-ease-out),
+    color var(--gui-dur-fast) var(--gui-ease-out),
+    box-shadow var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+button:not(:disabled):hover,
+.download-link:hover,
+.upload-control:hover {
+  border-color: var(--gui-accent);
+  background: var(--gui-bg-3);
+}
+
+/* Click / tap mechanical feedback: brief shrink + short drop, fast return. */
+button:not(:disabled):active,
+.download-link:active,
+.upload-control:active,
+.primary-action-link:active,
+.back-button:active,
+.mode-card:active,
+.home-entry-card:active {
+  transform: scale(0.98) translateY(2px);
+}
+
+button:disabled,
+.upload-control:has(input:disabled) {
+  opacity: 0.38;
+}
+
+:focus-visible {
+  outline: 1px solid var(--gui-accent);
+  outline-offset: 2px;
+}
+
+h2 {
+  color: var(--gui-text-1);
+}
+
+code {
+  color: var(--gui-text-2);
+  font-family: var(--gui-mono);
+}
+
+textarea,
+input,
+select {
+  border: 1px solid var(--gui-line) !important;
+  border-radius: var(--gui-radius) !important;
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  border-color: var(--gui-accent) !important;
+  outline: none;
+}
+
+textarea::placeholder,
+input::placeholder {
+  color: var(--gui-text-3);
+}
+
+/* ===== Panels ===== */
+.app-header,
+.panel {
+  border: 1px solid var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: rgba(12, 17, 22, 0.86);
+  box-shadow: var(--gui-shadow-panel);
+}
+
+.panel {
+  position: relative;
+}
+
+.eyebrow {
+  color: var(--gui-accent);
+  font-family: var(--gui-mono);
+  letter-spacing: 0.14em;
+}
+
+.section-header span {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-row span,
+.status-row small,
+.selected-image span,
+.job-details span {
+  color: var(--gui-text-3);
+}
+
+.status-row {
+  border-color: var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+}
+
+.status-row strong,
+.job-details strong {
+  color: var(--gui-text-2);
+}
+
+.status-row strong[data-status='connected'],
+.status-row strong[data-status='configured'],
+.job-details strong[data-status='succeeded'] {
+  color: var(--gui-ok);
+}
+
+.status-row strong[data-status='disconnected'],
+.status-row strong[data-status='not_configured'],
+.job-details strong[data-status='failed'] {
+  color: var(--gui-err);
+}
+
+.job-details strong[data-status='queued'],
+.job-details strong[data-status='running'] {
+  color: var(--gui-signal);
+}
+
+.hint {
+  color: var(--gui-text-2);
+}
+
+.hint.success {
+  color: var(--gui-ok);
+}
+
+.hint.warning {
+  color: var(--gui-warn);
+}
+
+.viewer-error,
+.hint.error {
+  color: var(--gui-err);
+}
+
+.empty-state {
+  border: 1px dashed var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: transparent;
+  color: var(--gui-text-3);
+}
+
+.job-details {
+  border-color: var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+}
+
+.download-link {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  padding: 10px 14px;
+  text-decoration: none;
+}
+
+/* ===== Badges: square outlined chips, mono labels, dot marker ===== */
+.badge {
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: transparent;
+  color: var(--gui-text-2);
+  font-family: var(--gui-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge[data-kind='accepted'],
+.badge[data-kind='succeeded'] {
+  border-color: var(--gui-ok);
+  background: rgba(63, 206, 150, 0.1);
+  color: var(--gui-ok);
+}
+
+.badge[data-kind='loading'],
+.badge[data-kind='queued'],
+.badge[data-kind='running'] {
+  border-color: var(--gui-signal);
+  background: rgba(232, 195, 61, 0.08);
+  color: var(--gui-signal);
+}
+
+.badge[data-kind='candidate'],
+.badge[data-kind='review'] {
+  border-color: var(--gui-accent);
+  background: var(--gui-accent-dim);
+  color: var(--gui-accent-hi);
+}
+
+.badge[data-kind='error'],
+.badge[data-kind='failed'] {
+  border-color: var(--gui-err);
+  background: rgba(224, 96, 79, 0.1);
+  color: var(--gui-err);
+}
+
+.version-badge {
+  border-radius: var(--gui-radius);
+  font-family: var(--gui-mono);
+}
+
+/* ===== Primary actions ===== */
+.primary-action,
+.primary-action-link {
+  position: relative;
+  border: 1px solid var(--gui-accent);
+  border-radius: var(--gui-radius);
+  background: var(--gui-accent-dim);
+  color: var(--gui-accent-hi);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--gui-notch)) 0,
+    100% var(--gui-notch),
+    100% 100%,
+    0 100%
+  );
+}
+
+.primary-action:not(:disabled):hover,
+.primary-action-link:hover {
+  background: rgba(47, 212, 196, 0.22);
+  border-color: var(--gui-accent-hi);
+  box-shadow: var(--gui-glow-accent);
+}
+
+/* ===== Chat ===== */
+.chat-message {
+  border: 1px solid var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+}
+
+.chat-message.user {
+  border: 1px solid var(--gui-line-strong);
+  border-left: 2px solid var(--gui-accent);
+  background: var(--gui-accent-dim);
+  color: var(--gui-text-1);
+}
+
+.chat-message-meta {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+}
+
+/* ===== Gallery ===== */
+.image-card {
+  border: 1px solid var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  transition:
+    transform var(--gui-dur-med) var(--gui-ease-out),
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    box-shadow var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.image-card:hover {
+  transform: translateX(4px);
+  border-color: var(--gui-line-strong);
+}
+
+.image-card[data-selected='true'] {
+  border-color: var(--gui-accent);
+  border-left-width: 3px;
+  box-shadow: none;
+}
+
+.image-card span {
+  color: var(--gui-text-2);
+}
+
+.image-card img,
+.selected-image img {
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-0);
+}
+
+.image-zoom-button {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-radius: var(--gui-radius);
+  background: rgba(7, 9, 12, 0.85);
+}
+
+.image-archive-button,
+.gallery-header-actions button,
+.subtle-button {
+  border-color: var(--gui-line);
+  background: transparent;
+  color: var(--gui-text-2);
+}
+
+.archived-gallery h3 {
+  color: var(--gui-text-2);
+}
+
+.image-editing-overlay {
+  background: rgba(7, 9, 12, 0.78);
+  color: var(--gui-accent-hi);
+}
+
+/* ===== Lightbox / modals ===== */
+.lightbox-overlay,
+.library-modal {
+  background: rgba(4, 6, 8, 0.82);
+  backdrop-filter: blur(4px);
+}
+
+.lightbox-content,
+.library-modal-content {
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-1);
+  color: var(--gui-text-1);
+}
+
+.lightbox-image-pane img {
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-0);
+}
+
+.version-thumbnail {
+  border-color: var(--gui-line);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-2);
+}
+
+.version-thumbnail[data-active='true'] {
+  border-color: var(--gui-accent);
+}
+
+/* ===== Viewer ===== */
+.viewer-shell,
+.viewer-placeholder {
+  border-color: var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-0);
+}
+
+.viewer-toolbar {
+  border-color: var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: rgba(7, 9, 12, 0.88);
+}
+
+.viewer-stats {
+  border-radius: var(--gui-radius);
+  background: rgba(7, 9, 12, 0.88);
+  font-family: var(--gui-mono);
+}
+
+.viewer-overlay,
+.viewer-error {
+  border-radius: var(--gui-radius);
+  background: rgba(12, 17, 22, 0.92);
+}
+
+/* ===== Slim global header → HUD bar ===== */
+.app-header.slim {
+  padding: 10px 20px;
+  border-right: 0;
+  border-left: 0;
+  border-top: 0;
+  border-radius: 0;
+  background: rgba(7, 9, 12, 0.9);
+  box-shadow: none;
+}
+
+.brand-mini strong {
+  color: var(--gui-text-1);
+  letter-spacing: 0.04em;
+}
+
+.status-dot {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-dot-light {
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+
+/* ===== StageShell: terminal frame ===== */
+.stage-shell {
+  gap: var(--gui-s4);
+}
+
+.stage-topbar {
+  border-bottom: 1px solid var(--gui-line);
+  padding-bottom: var(--gui-s3);
+}
+
+.back-button {
+  position: relative;
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  font-family: var(--gui-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  clip-path: polygon(
+    var(--gui-notch) 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    0 var(--gui-notch)
+  );
+}
+
+.back-button:hover {
+  border-color: var(--gui-accent);
+  color: var(--gui-accent-hi);
+}
+
+.stage-stepper {
+  gap: 0;
+}
+
+.step a,
+.step-static {
+  gap: var(--gui-s2);
+  padding: 6px 12px;
+  border-radius: 0;
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.78rem;
+}
+
+/* Connector rail between steps */
+.step + .step {
+  position: relative;
+  margin-left: var(--gui-s3);
+}
+
+.step + .step::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--gui-s3));
+  width: var(--gui-s3);
+  height: 1px;
+  background: var(--gui-line-strong);
+}
+
+.step-number {
+  color: var(--gui-text-3);
+}
+
+.step-label small {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+}
+
+.step[data-state='current'] .step-static {
+  border: 1px solid var(--gui-accent);
+  border-left-width: 3px;
+  background: var(--gui-accent-dim);
+  color: var(--gui-text-1);
+}
+
+.step[data-state='current'] .step-number {
+  color: var(--gui-accent-hi);
+}
+
+.step[data-state='done'] a {
+  color: var(--gui-text-2);
+}
+
+.step[data-state='done'] .step-number {
+  color: var(--gui-ok);
+}
+
+.step[data-state='done'] a:hover {
+  border-color: transparent;
+  color: var(--gui-accent-hi);
+}
+
+.stage-code {
+  justify-self: end;
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.session-warning {
+  border: 1px solid var(--gui-warn);
+  border-left-width: 3px;
+  border-radius: var(--gui-radius);
+  background: rgba(232, 163, 61, 0.08);
+  color: var(--gui-warn);
+  font-size: 0.85rem;
+}
+
+.stage-header {
+  position: relative;
+  padding-right: 96px;
+}
+
+.stage-header h2 {
+  font-size: 1.5rem;
+  letter-spacing: 0.02em;
+}
+
+.stage-index {
+  position: absolute;
+  top: -12px;
+  right: 0;
+  color: transparent;
+  font-family: var(--gui-mono);
+  font-size: 3.4rem;
+  font-weight: 700;
+  -webkit-text-stroke: 1px var(--gui-line-strong);
+  pointer-events: none;
+}
+
+.stage-action-bar {
+  border: 1px solid var(--gui-line);
+  border-top: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: rgba(7, 9, 12, 0.92);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.action-bar-summary {
+  color: var(--gui-text-2);
+}
+
+/* ===== Technical details ===== */
+.technical-details {
+  border: 1px dashed var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: transparent;
+}
+
+.technical-details summary {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.technical-details dt {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+}
+
+/* ===== Motion keyframes ===== */
+@keyframes gui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gui-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes gui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gui-spin-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes gui-scan {
+  0% {
+    top: -12%;
+  }
+  100% {
+    top: 112%;
+  }
+}
+
+@keyframes gui-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(3px, -3px);
+  }
+}
+
+/* ===== Home: industrial terminal main menu ===== */
+.console-home {
+  position: relative;
+  display: grid;
+  gap: var(--gui-s5);
+  align-content: start;
+  min-height: calc(100vh - 140px);
+}
+
+/* Low ambient scanline, Home only */
+.console-home::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12%;
+  z-index: var(--gui-z-bg);
+  height: 72px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(47, 212, 196, 0.05),
+    transparent
+  );
+  animation: gui-scan 9s linear infinite;
+}
+
+.home-bg-word {
+  position: absolute;
+  top: 24px;
+  right: -8px;
+  z-index: var(--gui-z-bg);
+  color: transparent;
+  font-family: var(--gui-mono);
+  font-size: clamp(3rem, 9vw, 7.5rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  -webkit-text-stroke: 1px rgba(58, 74, 87, 0.5);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Staggered entrance: order via --i, 50ms apart, ease-out settle.
+   fill-mode backwards (not both) so post-animation transforms (hover,
+   parallax tilt) stay live after the entrance completes. */
+.console-home .stagger {
+  animation: gui-rise var(--gui-dur-slow) var(--gui-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+
+.home-head {
+  position: relative;
+  z-index: var(--gui-z-content);
+  display: grid;
+  gap: var(--gui-s2);
+}
+
+.home-head h2 {
+  margin: 0;
+  font-size: clamp(1.7rem, 3.2vw, 2.6rem);
+  letter-spacing: 0.02em;
+}
+
+.home-head .home-sub {
+  max-width: 640px;
+  margin: 0;
+  color: var(--gui-text-2);
+}
+
+/* Asymmetric composition: left modules / large center visual / right rail */
+.home-grid {
+  position: relative;
+  z-index: var(--gui-z-content);
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: var(--gui-s5);
+  align-items: start;
+}
+
+.home-col {
+  display: grid;
+  gap: var(--gui-s4);
+  align-content: start;
+  min-width: 0;
+}
+
+/* Slight perspective separation between side columns and center */
+.home-col-left {
+  transform: perspective(1400px) rotateY(1.2deg);
+  transform-origin: right center;
+}
+
+.home-col-right {
+  transform: perspective(1400px) rotateY(-1.2deg);
+  transform-origin: left center;
+}
+
+/* Entry module: the main menu item */
+.home-entry-card {
+  position: relative;
+  display: grid;
+  gap: var(--gui-s2);
+  max-width: none;
+  margin-top: 0;
+  padding: var(--gui-s5);
+  overflow: hidden;
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-1);
+  color: var(--gui-text-1);
+  text-decoration: none;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 20px) 0,
+    100% 20px,
+    100% 100%,
+    0 100%
+  );
+  transition:
+    transform var(--gui-dur-med) var(--gui-ease-mech),
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    background var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+/* Accent line sweeps across on hover */
+.home-entry-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--gui-accent);
+  transition: width var(--gui-dur-med) var(--gui-ease-out);
+}
+
+.home-entry-card:hover {
+  transform: translateX(6px) scale(1.015);
+  border-color: var(--gui-accent);
+  background: var(--gui-bg-2);
+}
+
+.home-entry-card:hover::before {
+  width: 100%;
+}
+
+.home-entry-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.home-entry-sub {
+  color: var(--gui-accent);
+  font-family: var(--gui-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+}
+
+/* Home panels */
+.home-status-panel,
+.home-library-panel,
+.home-work-panel {
+  gap: var(--gui-s3);
+}
+
+.library-count-grid > div {
+  display: grid;
+  gap: 2px;
+  padding: var(--gui-s3);
+  border: 1px solid var(--gui-line);
+  background: var(--gui-bg-2);
+}
+
+.library-count-grid strong {
+  color: var(--gui-accent-hi);
+  font-family: var(--gui-mono);
+  font-size: 1.3rem;
+}
+
+.library-count-grid span {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.home-work-card {
+  border-color: var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  transition:
+    transform var(--gui-dur-med) var(--gui-ease-mech),
+    border-color var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.home-work-card:hover {
+  transform: translateX(4px);
+  border-color: var(--gui-line-strong);
+}
+
+.home-work-card a {
+  color: var(--gui-accent-hi);
+  font-family: var(--gui-mono);
+  font-size: 0.8rem;
+}
+
+.home-video-picker-panel {
+  display: grid;
+  gap: var(--gui-s3);
+  align-content: start;
+}
+
+.home-video-picker-panel h2,
+.home-video-picker-panel p {
+  overflow-wrap: anywhere;
+}
+
+.home-video-picker-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.home-video-picker-link:hover,
+.home-video-picker-link:focus-visible {
+  border-color: var(--gui-accent);
+  color: var(--gui-accent-hi);
+}
+
+/* Video frame picker */
+.video-picker-page {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.video-picker-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.video-picker-source-panel,
+.video-picker-frames-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.video-picker-stage {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.video-picker-source,
+.video-picker-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-0);
+}
+
+.video-picker-canvas {
+  object-fit: contain;
+}
+
+.video-picker-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.video-picker-controls input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.video-picker-filename,
+.video-picker-frame-grid .image-card span {
+  overflow-wrap: anywhere;
+}
+
+.video-picker-frame-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  max-height: none;
+  overflow-x: hidden;
+}
+
+@media (max-width: 720px) {
+  .video-picker-layout,
+  .video-picker-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===== Center orbital device (pure CSS, decorative) ===== */
+.home-center {
+  position: relative;
+  display: grid;
+  min-height: 460px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--gui-line);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(47, 212, 196, 0.06), transparent 55%),
+    var(--gui-bg-1);
+}
+
+.orbital {
+  position: relative;
+  width: min(420px, 80%);
+  aspect-ratio: 1;
+  pointer-events: none;
+}
+
+.orbital-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.orbital-ring-outer {
+  border: 1px solid var(--gui-line-strong);
+}
+
+/* Tick ring: repeating conic segments masked into a thin ring, slow spin */
+.orbital-ring-ticks {
+  inset: 4%;
+  background: repeating-conic-gradient(
+    var(--gui-line-strong) 0deg 0.8deg,
+    transparent 0.8deg 6deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  animation: gui-spin 90s linear infinite;
+}
+
+.orbital-ring-mid {
+  inset: 16%;
+  border: 1px dashed var(--gui-line);
+}
+
+.orbital-ring-inner {
+  inset: 30%;
+  border: 1px solid var(--gui-line-strong);
+  animation: gui-spin-reverse 120s linear infinite;
+}
+
+.orbital-core {
+  position: absolute;
+  inset: 41%;
+  display: grid;
+  place-items: center;
+}
+
+/* Abstract wireframe asset: two interleaved rotated squares */
+.orbital-cube,
+.orbital-cube::after {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--gui-accent);
+}
+
+.orbital-cube {
+  position: relative;
+  transform: rotate(45deg);
+  opacity: 0.85;
+  animation: gui-spin 60s linear infinite;
+}
+
+.orbital-cube::after {
+  content: '';
+  position: absolute;
+  inset: 18%;
+  border-color: var(--gui-line-strong);
+}
+
+.orbital-cross {
+  position: absolute;
+  background: var(--gui-line);
+}
+
+.orbital-cross-h {
+  top: 50%;
+  left: -6%;
+  right: -6%;
+  height: 1px;
+}
+
+.orbital-cross-v {
+  top: -6%;
+  bottom: -6%;
+  left: 50%;
+  width: 1px;
+}
+
+.orbital-tag {
+  position: absolute;
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.orbital-tag-a {
+  top: 6%;
+  left: 8%;
+  animation: gui-drift 7s ease-in-out infinite;
+}
+
+.orbital-tag-b {
+  right: 4%;
+  bottom: 8%;
+  color: var(--gui-accent);
+}
+
+/* Parallax layers consume --par-x/--par-y set by useCursorParallax.
+   Defaults keep everything centered when parallax is off. */
+.par-bg {
+  transform: translate3d(calc(var(--par-x, 0) * 3px), calc(var(--par-y, 0) * 3px), 0);
+}
+
+.par-mid {
+  transform: translate3d(calc(var(--par-x, 0) * 6px), calc(var(--par-y, 0) * 6px), 0);
+}
+
+.par-front {
+  transform: translate3d(calc(var(--par-x, 0) * 12px), calc(var(--par-y, 0) * 12px), 0);
+}
+
+.home-center.par-tilt {
+  transform:
+    perspective(1400px)
+    rotateX(calc(var(--par-y, 0) * -1deg))
+    rotateY(calc(var(--par-x, 0) * 1.2deg));
+}
+
+/* Layers that both parallax and spin keep the parallax transform on a
+   wrapper (.orbital-layer) and the spin animation on the ring inside. */
+.orbital-layer {
+  position: absolute;
+  inset: 0;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1180px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .home-center {
+    grid-column: span 2;
+    grid-row: 1;
+    min-height: 380px;
+  }
+
+  .home-col-left,
+  .home-col-right {
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-center {
+    grid-column: auto;
+    min-height: 300px;
+  }
+
+  .home-bg-word {
+    font-size: 3rem;
+  }
+
+  .stage-index {
+    font-size: 2.2rem;
+  }
+}
+
+/* ===== Reduced motion: keep only brief fades ===== */
+@media (prefers-reduced-motion: reduce) {
+  .console-home .stagger {
+    animation: gui-fade var(--gui-dur-fast) ease-out both;
+    animation-delay: 0ms;
+  }
+
+  .console-home::after,
+  .orbital-ring-ticks,
+  .orbital-ring-inner,
+  .orbital-cube,
+  .orbital-tag-a {
+    animation: none;
+  }
+
+  .home-col-left,
+  .home-col-right,
+  .home-center.par-tilt {
+    transform: none;
+  }
+
+  .par-bg,
+  .par-mid,
+  .par-front {
+    transform: none;
+  }
+
+  .home-entry-card:hover,
+  .home-work-card:hover,
+  .image-card:hover {
+    transform: none;
+  }
+
+  button:not(:disabled):active,
+  .download-link:active,
+  .upload-control:active,
+  .primary-action-link:active,
+  .back-button:active,
+  .mode-card:active,
+  .home-entry-card:active {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   GAME UI REDESIGN — Round 2 fixes
+   Home re-layout, unified 5-stage nav, ghost-scrollbar fix, gallery
+   overflow fix, global scrollbar styling, library overflow guards.
+   ========================================================================== */
+
+/* ===== Ghost scrollbar fix =====
+   Actual cause: the Home scanline pseudo-element was positioned with
+   top:-12% and animated to top:112% — a layout property — so near the end of
+   every cycle it extended the document's scrollable overflow and a vertical
+   scrollbar flickered in. Fix: clip decorations inside .console-home and
+   animate transform instead of top. */
+.console-home {
+  overflow: hidden;
+}
+
+.console-home::after {
+  top: 0;
+  transform: translateY(-80px);
+  animation: gui-scan 9s linear infinite;
+}
+
+@keyframes gui-scan {
+  from {
+    transform: translateY(-80px);
+  }
+  to {
+    transform: translateY(110vh);
+  }
+}
+
+/* ===== Global scrollbar styling (dark track, thin thumb) ===== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #33424e #0b1015;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0b1015;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: #2c3a45;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--gui-accent);
+}
+
+/* ===== Gallery: no horizontal scroll, responsive grid =====
+   Actual horizontal-overflow cause: cards could translateX(4px) on hover
+   inside a container with overflow-y:auto (computing overflow-x to auto),
+   and long unbreakable text could push card width. Both removed. */
+.gallery-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  overflow-x: hidden;
+  scroll-padding-bottom: 24px;
+}
+
+.image-card,
+.image-card-select {
+  min-width: 0;
+}
+
+.image-card-select span {
+  overflow-wrap: anywhere;
+}
+
+.image-card:hover {
+  transform: none;
+  border-color: var(--gui-line-strong);
+  background: var(--gui-bg-3);
+}
+
+.chat-messages {
+  overflow-x: hidden;
+}
+
+.chat-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the sticky action bar from covering the last gallery row */
+.stage-body {
+  padding-bottom: 8px;
+}
+
+/* ===== Version history strip: wrap instead of horizontal scroll ===== */
+.lightbox-version-strip {
+  flex-wrap: wrap;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 216px;
+}
+
+/* ===== Home round-2 layout ===== */
+.home-head {
+  max-width: 860px;
+}
+
+/* Service list: compact rows, no narrow status cards, text may wrap */
+.service-list {
+  display: grid;
+  gap: 8px;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: 12px auto minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--gui-line);
+  background: var(--gui-bg-2);
+}
+
+.service-row .status-dot-light {
+  align-self: center;
+}
+
+.service-name {
+  color: var(--gui-text-2);
+  font-family: var(--gui-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.service-row strong {
+  justify-self: end;
+  color: var(--gui-text-2);
+  font-family: var(--gui-mono);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.service-row[data-status='connected'] strong,
+.service-row[data-status='configured'] strong {
+  color: var(--gui-ok);
+}
+
+.service-row[data-status='disconnected'] strong,
+.service-row[data-status='not_configured'] strong {
+  color: var(--gui-err);
+}
+
+.service-row small {
+  grid-column: 1 / -1;
+  color: var(--gui-text-3);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+/* Center orbital = the primary entry */
+.home-center-entry {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    box-shadow var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.home-center-entry:hover,
+.home-center-entry:focus-visible {
+  border-color: var(--gui-accent);
+  box-shadow: var(--gui-glow-accent);
+}
+
+.home-center-entry:hover .orbital-cube,
+.home-center-entry:focus-visible .orbital-cube {
+  border-color: var(--gui-accent-hi);
+}
+
+/* Primary CTA: an info band overlapping the orbital core's lower edge —
+   near the visual core, not at the bottom of the device. pointer-events
+   stay off so the whole orbital area remains one click target (the Link). */
+.home-center-cta {
+  position: absolute;
+  top: 70%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: calc(100% - 40px);
+  padding: 14px 22px;
+  transform: translateX(-50%);
+  border: 1px solid var(--gui-line-strong);
+  background: rgba(7, 9, 12, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  transition:
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    background var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.home-center-cta-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.home-center-cta-title {
+  color: var(--gui-text-1);
+  font-size: clamp(1.3rem, 1rem + 1.4vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.home-center-cta-sub {
+  color: var(--gui-signal);
+  font-family: var(--gui-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.home-center-cta-arrow {
+  flex-shrink: 0;
+  color: var(--gui-signal);
+  font-size: 1.5rem;
+  transition: transform var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.home-center-entry:hover .home-center-cta,
+.home-center-entry:focus-visible .home-center-cta {
+  border-color: var(--gui-signal);
+  background: rgba(10, 14, 18, 0.94);
+}
+
+.home-center-entry:hover .home-center-cta-arrow,
+.home-center-entry:focus-visible .home-center-cta-arrow {
+  transform: translateX(5px);
+}
+
+/* Right rail: five-stage session navigation */
+.session-nav-panel {
+  display: grid;
+  gap: var(--gui-s3);
+  align-content: start;
+}
+
+.session-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.session-nav-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--gui-line);
+  border-left-width: 3px;
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  text-decoration: none;
+  transition:
+    transform var(--gui-dur-med) var(--gui-ease-mech),
+    border-color var(--gui-dur-fast) var(--gui-ease-out),
+    background var(--gui-dur-fast) var(--gui-ease-out);
+}
+
+.session-nav-index {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.session-nav-text {
+  display: grid;
+  min-width: 0;
+}
+
+.session-nav-text strong {
+  overflow-wrap: anywhere;
+}
+
+.session-nav-text small {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.session-nav-state {
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.session-nav-note {
+  grid-column: 1 / -1;
+  color: var(--gui-text-3);
+  font-size: 0.75rem;
+}
+
+.session-nav-item[data-state='available'] {
+  border-left-color: var(--gui-accent);
+}
+
+.session-nav-item[data-state='available']:hover {
+  transform: translateX(6px);
+  border-color: var(--gui-accent);
+  background: var(--gui-bg-3);
+}
+
+.session-nav-item[data-state='available'] .session-nav-state {
+  color: var(--gui-accent-hi);
+}
+
+.session-nav-item[data-state='done'] {
+  border-left-color: var(--gui-ok);
+}
+
+.session-nav-item[data-state='done']:hover {
+  transform: translateX(6px);
+  border-color: var(--gui-ok);
+}
+
+.session-nav-item[data-state='done'] .session-nav-index,
+.session-nav-item[data-state='done'] .session-nav-state {
+  color: var(--gui-ok);
+}
+
+.session-nav-item[data-state='locked'] {
+  opacity: 0.55;
+}
+
+.session-nav-item[data-state='na'] {
+  border-left-style: dashed;
+  opacity: 0.4;
+}
+
+/* ===== Library overflow guards ===== */
+@media (max-width: 1180px) {
+  .library-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .library-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .asset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .asset-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.asset-card {
+  border-color: var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+}
+
+.asset-card-body {
+  min-width: 0;
+}
+
+.asset-card-body strong {
+  overflow-wrap: anywhere;
+}
+
+.model-asset-icon {
+  border-color: var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-0);
+  color: var(--gui-accent);
+}
+
+/* ===== Reduced motion additions for round-2 elements ===== */
+@media (prefers-reduced-motion: reduce) {
+  .session-nav-item[data-state='available']:hover,
+  .session-nav-item[data-state='done']:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   GAME UI REDESIGN — Round 3 fixes
+   Home CTA reposition, new-conversation button, session-stepper opt-out,
+   reduced-motion addition for the CTA arrow.
+   ========================================================================== */
+
+/* ChatPanel: dedicated "start new conversation" entry. Clearly above
+   auxiliary text, still below the primary generate action. */
+.new-conversation-button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: var(--gui-bg-2);
+  color: var(--gui-text-1);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.new-conversation-button:not(:disabled):hover {
+  border-color: var(--gui-accent);
+  background: var(--gui-bg-3);
+  color: var(--gui-accent-hi);
+}
+
+.new-conversation-button:focus-visible {
+  border-color: var(--gui-accent);
+  color: var(--gui-accent-hi);
+}
+
+/* Recovery screens (missing job/model): replaces the session stepper so no
+   unrelated selected-image progress is shown. */
+.stage-stepper-empty {
+  justify-self: center;
+  color: var(--gui-text-3);
+  font-family: var(--gui-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .home-center-cta {
+    gap: 12px;
+    padding: 10px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-center-entry:hover .home-center-cta-arrow,
+  .home-center-entry:focus-visible .home-center-cta-arrow {
+    transform: none;
   }
 }

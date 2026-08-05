@@ -28,8 +28,6 @@ export function ModeSelectPage() {
       pipeline={currentPipeline ?? null}
       eyebrow="STAGE 02 · MODE"
       title="選擇生成模式"
-      backTo="/reference"
-      backLabel="參考圖"
     >
       <div className="mode-layout">
         <section className="panel mode-reference">

@@ -1,64 +1,34 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useWorkspace, type Pipeline } from '../context/WorkspaceContext';
+import { getStageNavItems, type StageNavId } from '../navigation/stageNav';
 
-export type StageId = 'reference' | 'mode' | 'views' | 'generate' | 'inspect';
-
-type StageDef = {
-  id: StageId;
-  label: string;
-  en: string;
-  path?: string;
-};
-
-const STAGE_DEFS: Record<StageId, StageDef> = {
-  reference: { id: 'reference', label: '參考圖', en: 'REFERENCE', path: '/reference' },
-  mode: { id: 'mode', label: '模式', en: 'MODE', path: '/mode' },
-  views: { id: 'views', label: '視圖', en: 'VIEWS', path: '/views' },
-  generate: { id: 'generate', label: '生成', en: 'GENERATE' },
-  inspect: { id: 'inspect', label: '檢視', en: 'INSPECT' },
-};
-
-// The stepper never skips numbers: single-view hides the views stage instead
-// of showing a gap. Before a pipeline is chosen, later stages are unknown.
-function stagesForPipeline(pipeline?: Pipeline | null): StageDef[] {
-  if (pipeline === 'single') {
-    return [STAGE_DEFS.reference, STAGE_DEFS.mode, STAGE_DEFS.generate, STAGE_DEFS.inspect];
-  }
-  if (pipeline === 'multiview') {
-    return [
-      STAGE_DEFS.reference,
-      STAGE_DEFS.mode,
-      STAGE_DEFS.views,
-      STAGE_DEFS.generate,
-      STAGE_DEFS.inspect,
-    ];
-  }
-  return [STAGE_DEFS.reference, STAGE_DEFS.mode];
-}
+export type StageId = StageNavId;
 
 type StageShellProps = {
   current: StageId;
   pipeline?: Pipeline | null;
   stepperImageId?: string;
-  viewsPath?: string;
+  // Set to false on recovery screens (missing job/model): hides the session
+  // stepper instead of falling back to the currently selected image, which
+  // would show an unrelated image's stage progress.
+  showSessionStepper?: boolean;
   eyebrow: string;
   title: string;
-  backTo?: string;
-  backLabel?: string;
   actions?: ReactNode;
   children: ReactNode;
 };
 
+// Shared stage frame: fixed home button top-left, the five-stage rail (rules
+// come from navigation/stageNav, same as the Home session rail), session
+// warning, header and the sticky action bar. Navigation only — clicking a
+// stage never triggers generation.
 export function StageShell({
   current,
-  pipeline,
   stepperImageId,
-  viewsPath,
+  showSessionStepper = true,
   eyebrow,
   title,
-  backTo,
-  backLabel,
   actions,
   children,
 }: StageShellProps) {
@@ -69,92 +39,62 @@ export function StageShell({
     multiviewByImageId,
     hasActiveJobs,
   } = useWorkspace();
-  const activeImageId = stepperImageId ?? selectedImageId;
-  const activePipeline = pipeline ?? (activeImageId ? pipelineByImageId[activeImageId] : null);
-  const stages = stagesForPipeline(activePipeline);
-  const currentIndex = stages.findIndex((stage) => stage.id === current);
-  const singleEntry = activeImageId ? singleJobsByImageId[activeImageId] : undefined;
-  const singleJob = singleEntry?.job;
-  const multiviewWorkspace = activeImageId ? multiviewByImageId[activeImageId] : undefined;
-  const multiviewJob = multiviewWorkspace?.job;
-  const modelJob = multiviewWorkspace?.modelJob;
 
-  function getStageDestination(stage: StageId): string | null {
-    if (stage === 'reference') {
-      return '/reference';
-    }
-    if (!activeImageId) {
-      return null;
-    }
-    if (stage === 'mode') {
-      return '/mode';
-    }
-    if (activePipeline === 'single') {
-      if (stage === 'generate') {
-        return singleJob ? `/jobs/single/${singleJob.job_id}` : '/generate';
-      }
-      if (stage === 'inspect' && singleJob?.status === 'succeeded' && singleEntry?.modelUrl) {
-        return `/viewer/single/${singleJob.job_id}`;
-      }
-      return null;
-    }
-    if (activePipeline === 'multiview') {
-      if (stage === 'views') {
-        return viewsPath ?? `/views/${activeImageId}`;
-      }
-      if (stage === 'generate' && multiviewJob && modelJob) {
-        return `/jobs/multiview/${multiviewJob.jobId}`;
-      }
-      if (
-        stage === 'inspect' &&
-        multiviewJob &&
-        modelJob?.status === 'succeeded' &&
-        (modelJob.geometryModel.available || modelJob.texturedModel.available)
-      ) {
-        return `/viewer/multiview/${multiviewJob.jobId}`;
-      }
-    }
-    return null;
-  }
+  const items = showSessionStepper
+    ? getStageNavItems({
+        imageId: stepperImageId ?? selectedImageId,
+        pipelineByImageId,
+        singleJobsByImageId,
+        multiviewByImageId,
+        currentStage: current,
+      })
+    : [];
+  const currentIndex = items.findIndex((item) => item.id === current);
 
   return (
     <div className="stage-shell">
       <div className="stage-topbar">
-        {backTo ? (
-          <Link className="back-button" to={backTo}>
-            ← {backLabel ?? '返回'}
-          </Link>
+        <Link className="back-button" to="/">
+          ← 回到首頁
+        </Link>
+
+        {showSessionStepper ? (
+          <nav className="stage-stepper" aria-label="工作流程階段">
+            {items.map((item) => {
+              const label = (
+                <>
+                  <span className="step-number">{String(item.index + 1).padStart(2, '0')}</span>
+                  <span className="step-label">
+                    {item.label}
+                    <small>{item.en}</small>
+                  </span>
+                </>
+              );
+              const canNavigate = Boolean(item.destination) && item.state !== 'current';
+              return (
+                <span className="step" data-state={item.state} key={item.id}>
+                  {canNavigate && item.destination ? (
+                    <Link to={item.destination}>{label}</Link>
+                  ) : (
+                    <span className="step-static" title={item.note}>
+                      {label}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
         ) : (
-          <span className="back-button-spacer" />
+          <span className="stage-stepper-empty" aria-hidden="true">
+            NO SESSION // —
+          </span>
         )}
 
-        <nav className="stage-stepper" aria-label="工作流程階段">
-          {stages.map((stage, index) => {
-            const state = index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'todo';
-            const destination = getStageDestination(stage.id);
-            const label = (
-              <>
-                <span className="step-number">{String(index + 1).padStart(2, '0')}</span>
-                <span className="step-label">
-                  {stage.label}
-                  <small>{stage.en}</small>
-                </span>
-              </>
-            );
-            return (
-              <span className="step" data-state={state} key={stage.id}>
-                {state !== 'current' && destination ? (
-                  <Link to={destination}>{label}</Link>
-                ) : (
-                  <span className="step-static">{label}</span>
-                )}
-              </span>
-            );
-          })}
-          {!pipeline && <span className="step step-unknown">···</span>}
-        </nav>
-
-        <span className="back-button-spacer" />
+        {showSessionStepper && (
+          <span className="stage-code" aria-hidden="true">
+            SEC.{String(currentIndex + 1).padStart(2, '0')} // {items[currentIndex]?.en ?? '—'}
+          </span>
+        )}
       </div>
 
       {hasActiveJobs && (
@@ -166,6 +106,11 @@ export function StageShell({
       <header className="stage-header">
         <p className="eyebrow">{eyebrow}</p>
         <h2>{title}</h2>
+        {showSessionStepper && (
+          <span className="stage-index" aria-hidden="true">
+            {String(currentIndex + 1).padStart(2, '0')}
+          </span>
+        )}
       </header>
 
       <div className="stage-body">{children}</div>

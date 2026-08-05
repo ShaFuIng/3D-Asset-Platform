@@ -56,6 +56,8 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
     startModelJob,
   } = useWorkspace();
   const [zoomState, setZoomState] = useState<MultiviewZoomState>();
+  // Lightbox-scoped error for the Set Candidate action only.
+  const [candidateError, setCandidateError] = useState<string | null>(null);
 
   const imageId = params.imageId ?? selectedImageId ?? '';
   const selectedImage = imageId ? images.find((image) => image.image_id === imageId) : undefined;
@@ -112,8 +114,17 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
       return;
     }
     const fallbackImageId = getDefaultPreviewImageId(slot);
-    setZoomState(fallbackImageId ? { ...zoomState, previewImageId: fallbackImageId } : undefined);
+    if (fallbackImageId) {
+      setZoomState({ ...zoomState, previewImageId: fallbackImageId });
+    } else {
+      closeZoom();
+    }
   }, [job, zoomState]);
+
+  function closeZoom() {
+    setCandidateError(null);
+    setZoomState(undefined);
+  }
 
   function openZoom(view: MultiviewName) {
     const slot = job?.views[view];
@@ -122,6 +133,7 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
     }
     const previewImageId = getDefaultPreviewImageId(slot);
     if (previewImageId) {
+      setCandidateError(null);
       setZoomState({ view, previewImageId });
     }
   }
@@ -137,9 +149,15 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
     if (!zoomState) {
       return;
     }
-    const succeeded = await setViewCandidate(imageId, zoomState.view, versionImageId);
-    if (succeeded) {
+    setCandidateError(null);
+    const result = await setViewCandidate(imageId, zoomState.view, versionImageId);
+    if (result.ok) {
+      setCandidateError(null);
       setZoomState((current) => (current ? { ...current, previewImageId: versionImageId } : current));
+      return;
+    }
+    if (result.error) {
+      setCandidateError(result.error);
     }
   }
 
@@ -166,11 +184,8 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
       current="views"
       pipeline="multiview"
       stepperImageId={imageId}
-      viewsPath={`/views/${imageId}`}
       eyebrow="MULTI-VIEW PIPELINE · VIEWS"
       title="生成並確認 Front / Left / Back"
-      backTo="/mode"
-      backLabel="模式"
       actions={
         <>
           <div className="action-bar-summary">
@@ -276,13 +291,13 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
             versions: zoomSlot.versions,
             previewImageId: zoomState.previewImageId,
             isPending: isZoomActionPending,
-            error,
+            error: candidateError,
             onPreview: (versionImageId) => setZoomState({ ...zoomState, previewImageId: versionImageId }),
             onPrevious: () => previewVersionAt(zoomPreviewIndex - 1),
             onNext: () => previewVersionAt(zoomPreviewIndex + 1),
             onSetCandidate: (versionImageId) => void handleSetCandidate(versionImageId),
           }}
-          onClose={() => setZoomState(undefined)}
+          onClose={closeZoom}
         />
       )}
     </StageShell>

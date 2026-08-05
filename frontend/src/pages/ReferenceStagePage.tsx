@@ -52,8 +52,6 @@ export function ReferenceStagePage({ openai }: ReferenceStagePageProps) {
       pipeline={null}
       eyebrow="STAGE 01 · REFERENCE"
       title="建立或上傳 Reference Image"
-      backTo="/"
-      backLabel="首頁"
       actions={
         <>
           <div className="action-bar-summary">

@@ -50,8 +50,6 @@ export function GenerateConfirmPage({ comfy }: GenerateConfirmPageProps) {
       pipeline="single"
       eyebrow="SINGLE-VIEW PIPELINE · GENERATE"
       title="確認生成 3D"
-      backTo="/mode"
-      backLabel="模式"
     >
       <div className="confirm-layout">
         <section className="panel">

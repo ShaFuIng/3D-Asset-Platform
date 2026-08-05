@@ -12,11 +12,16 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
   - Reference、Mode、Views、Generate、Inspect
   - URL 明確攜帶 Single／Multiview Job 身分
   - 切頁後持續輪詢進行中的 Job
+  - Home 與 StageShell 共用五階段導覽規則
 - OpenAI 圖片功能
   - 對話式圖片生成
   - 指定圖片修改，原圖與修改版本分開保存
   - Multiview 單一視角 GPT Image Edit
 - 本機圖片上傳、Reference 選擇、隱藏／恢復與新對話
+- Video Frame Picker
+  - 從本機 MP4／MOV／WebM 等影片選擇時間點並擷取 Reference Image
+  - 完整影片不會上傳；只有使用者選取的單張影格會進入 Asset Library
+  - 成功擷取的影格可設為 Reference，沿用現有 Single／Multiview 流程
 - Single Image → ComfyUI Hunyuan3D → GLB 流程
 - Multiview Reference → Qwen Front／Left／Back → Hunyuan Multiview GLB 流程
 - Multiview 單視角調整
@@ -32,6 +37,9 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
   - Original／Clay／Normal／Wireframe 模式
   - Grid／Axes、無陰影多方向補光
   - Mesh／Vertices／Triangles 統計
+- Game UI 第一版
+  - 首頁三區布局、orbital workspace 入口與暗色終端風格
+  - 統一階段 Stepper、Recovery 畫面與主要操作對比
 - GPL-3.0 授權與第三方來源標示
 
 ### 尚未完成
@@ -39,7 +47,7 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
 - Job、Multiview 工作階段與視角版本紀錄的跨重啟持久化
 - 多 worker 共用 Job 狀態與正式任務佇列
 - Mesh 部件拆分、材質編輯、拓樸檢查與骨架／IK
-- 完整的遊戲風格 UI、動畫與正式 RWD 視覺設計
+- 完整逐頁 UI QA、RWD 細節與正式視覺 polish
 - 正式環境部署與長時間生成穩定性驗證
 
 ## 最近驗證
@@ -47,12 +55,21 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
 2026-08-04：
 
 - 後端完整測試：`155 passed, 1 skipped`
-- 前端：`npm run typecheck` 與 `npm run build` 通過
 - 人工驗證：
   - Single 與 Multiview 完整生成流程
   - 本機單視角重新抽選與 GPT 單視角修改
   - Candidate 接受、歷史版本切換與回復
   - Asset Library Trash／Restore／Permanent Delete
+
+2026-08-05：
+
+- 前端：`npm run typecheck` 與 `npm run build` 通過
+  - Vite build 仍有既有 chunk size warning
+- 程式檢查：
+  - Game UI 導覽規則、Recovery stepper 與 Lightbox Set Candidate 錯誤顯示的程式檢查
+- Video Frame Picker 整合：
+  - `npm run typecheck` 與 `npm run build` 通過
+  - 影片僅於瀏覽器本機播放，擷取影格沿用 `POST /api/images/upload`
 
 ## 專案目錄
 

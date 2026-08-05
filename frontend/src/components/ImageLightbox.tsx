@@ -146,15 +146,7 @@ export function ImageLightbox({
                     下一個
                   </button>
                 </div>
-                <div
-                  className="lightbox-version-strip"
-                  onWheel={(event) => {
-                    if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-                      event.currentTarget.scrollLeft += event.deltaY;
-                      event.preventDefault();
-                    }
-                  }}
-                >
+                <div className="lightbox-version-strip">
                   {versionControls.versions.map((version, index) => (
                     <button
                       key={version.image.imageId}

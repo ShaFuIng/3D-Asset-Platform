@@ -15,6 +15,7 @@ import { LibraryPage } from './pages/LibraryPage';
 import { ModeSelectPage } from './pages/ModeSelectPage';
 import { MultiviewStagePage } from './pages/MultiviewStagePage';
 import { ReferenceStagePage } from './pages/ReferenceStagePage';
+import { VideoFramePickerPage } from './pages/VideoFramePickerPage';
 import { ViewerStagePage } from './pages/ViewerStagePage';
 import type { ServiceHealthState } from './types/api';
 
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/" element={<HomePage backend={backend} openai={openai} comfy={comfy} />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/reference" element={<ReferenceStagePage openai={openai} />} />
+          <Route path="/video-upload" element={<VideoFramePickerPage />} />
           <Route path="/mode" element={<ModeSelectPage />} />
           <Route path="/views" element={<MultiviewStagePage comfy={comfy} openai={openai} />} />
           <Route path="/views/:imageId" element={<MultiviewStagePage comfy={comfy} openai={openai} />} />
