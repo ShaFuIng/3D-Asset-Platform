@@ -5,7 +5,7 @@ from .asset_catalog import AssetCatalog
 from .asset_usage import AssetUsageGuard
 from .config import Settings, settings
 from .errors import register_error_handlers
-from .routers import images, jobs_3d, library, multiview
+from .routers import demo_assets, images, jobs_3d, library, multiview
 from .services.comfy_client import ComfyClient, ComfyClientError
 from .services.jobs import JobStore
 from .services.multiview_jobs import MultiviewJobStore
@@ -48,6 +48,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     app.include_router(jobs_3d.router)
     app.include_router(library.router)
     app.include_router(multiview.router)
+    app.include_router(demo_assets.router)
     register_health_routes(app)
     return app
 

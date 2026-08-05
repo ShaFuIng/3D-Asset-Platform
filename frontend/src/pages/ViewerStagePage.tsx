@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ARPreview } from '../components/ARPreview';
 import { ModelViewer } from '../components/ModelViewer';
 import { StageShell } from '../components/StageShell';
 import { TechnicalDetails } from '../components/TechnicalDetails';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { findRoutedJob, parsePipeline } from './routedJob';
 import { resolveApiUrl } from '../api/client';
+
+type ViewerMode = '3d' | 'ar';
 
 // Stage 05: inspection workspace. Single-view shows one GLB; multiview keeps
 // the geometry/textured variants with an explicit "now previewing" indicator.
@@ -13,6 +17,10 @@ export function ViewerStagePage() {
   const pipeline = parsePipeline(params.pipeline);
   const jobId = params.jobId;
   const { images, singleJobsByImageId, multiviewByImageId, setMultiviewModelKind } = useWorkspace();
+  // Local only, same as the existing Geometry/Textured toggle below — not
+  // part of WorkspaceContext/stageNav's state machine, just which viewer
+  // component is currently shown for whichever model is already resolved.
+  const [viewerMode, setViewerMode] = useState<ViewerMode>('3d');
 
   const routed =
     pipeline && jobId
@@ -60,8 +68,18 @@ export function ViewerStagePage() {
               {modelUrl ? 'Ready' : 'Unavailable'}
             </span>
           </div>
+
+          <div className="model-toggle" role="group" aria-label="Viewer mode selector">
+            <button type="button" data-selected={viewerMode === '3d'} onClick={() => setViewerMode('3d')}>
+              3D 檢視
+            </button>
+            <button type="button" data-selected={viewerMode === 'ar'} onClick={() => setViewerMode('ar')}>
+              AR 預覽
+            </button>
+          </div>
+
           <div className="model-preview">
-            <ModelViewer src={modelUrl} />
+            {viewerMode === '3d' ? <ModelViewer src={modelUrl} /> : <ARPreview modelUrl={modelUrl} />}
           </div>
           <div className="model-downloads">
             {modelUrl ? (
@@ -133,8 +151,21 @@ export function ViewerStagePage() {
           </button>
         </div>
 
+        <div className="model-toggle" role="group" aria-label="Viewer mode selector">
+          <button type="button" data-selected={viewerMode === '3d'} onClick={() => setViewerMode('3d')}>
+            3D 檢視
+          </button>
+          <button type="button" data-selected={viewerMode === 'ar'} onClick={() => setViewerMode('ar')}>
+            AR 預覽
+          </button>
+        </div>
+
         <div className="model-preview">
-          <ModelViewer src={activeModelUrl ?? undefined} />
+          {viewerMode === '3d' ? (
+            <ModelViewer src={activeModelUrl ?? undefined} />
+          ) : (
+            <ARPreview modelUrl={activeModelUrl ?? undefined} />
+          )}
         </div>
 
         <div className="model-downloads">

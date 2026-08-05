@@ -111,6 +111,7 @@ def settings(tmp_path) -> Settings:
         openai_response_model="gpt-5.6",
         storage_images_dir=tmp_path / "storage" / "images",
         storage_models_dir=tmp_path / "storage" / "models",
+        demo_ar_preview_dir=tmp_path / "demo-assets" / "ar-preview",
         workflow_path=tmp_path / "workflows" / "hunyuan3d_api.json",
         qwen_multiview_workflow_path=tmp_path / "workflows" / "qwen_multiview_api.json",
         hunyuan_multiview_workflow_path=tmp_path / "workflows" / "hunyuan_multiview_api.json",

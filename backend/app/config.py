@@ -17,6 +17,7 @@ class Settings:
     openai_response_model: str
     storage_images_dir: Path
     storage_models_dir: Path
+    demo_ar_preview_dir: Path
     workflow_path: Path
     qwen_multiview_workflow_path: Path
     hunyuan_multiview_workflow_path: Path
@@ -34,6 +35,11 @@ class Settings:
             openai_response_model=os.getenv("OPENAI_RESPONSE_MODEL", "gpt-5.6"),
             storage_images_dir=root / "storage" / "images",
             storage_models_dir=root / "storage" / "models",
+            # Static demo assets for the AR preview stage (background photo,
+            # depth map, pre-baked alpha mask). Deliberately outside
+            # storage/images/ so AssetCatalog's rglob scan never picks these
+            # up — see backend/app/routers/demo_assets.py.
+            demo_ar_preview_dir=root / "demo-assets" / "ar-preview",
             workflow_path=root / "workflows" / "hunyuan3d_api.json",
             qwen_multiview_workflow_path=(
                 root / "workflows" / "Qwen_Image_Edit_2511_Front_Left_Back_Q3_K_M_API.json"

@@ -504,6 +504,21 @@ code {
   display: block;
 }
 
+/* ===== ARPreview (frontend/src/components/ARPreview.tsx) =====
+   Foreground occlusion layer: a plain <img>, not part of the Three.js scene
+   (see ARPreview.tsx). Sits above the plain-flow .three-canvas, below the
+   z-index:2 toolbar/stats so those never get hidden behind an opaque part
+   of the mask. */
+.ar-preview-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
 .viewer-overlay,
 .viewer-error {
   position: absolute;
