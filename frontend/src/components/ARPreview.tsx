@@ -25,14 +25,31 @@ import { resolveApiUrl } from '../api/client';
  * character as a single depth keeps the occlusion edge hard, which is what
  * actually reads as "standing behind that object".
  *
+ * CONTROLLED COMPONENT: this component owns no placement state of its own.
+ * Every placement value (position/size/rotation/depth/debug) is a prop, and
+ * the caller (e.g. ARStudioPage) is expected to own the actual <input>
+ * sliders and render them WHEREVER it wants in its own layout — this
+ * component only ever renders the photo+model canvas, nothing overlaid on
+ * top of it. Re-exports DEFAULT_* below so callers have a single source of
+ * truth for the tuned starting values instead of duplicating magic numbers.
+ *
  * Camera is fixed (no OrbitControls) — this is a still "photo mockup" shot.
  * scene_mask.png is no longer used by this component.
  */
 
 type ARPreviewProps = {
   modelUrl?: string;
-  /** Shows the placement sliders. */
-  controls?: boolean;
+  // Optional, not required: callers that don't care about placement (e.g.
+  // ViewerStagePage's quick "3D / AR" toggle, which only ever passes
+  // modelUrl) get the tuned demo defaults for free. Callers that DO care
+  // (ARStudioPage, DevARPreviewPage) pass explicit values from their own
+  // slider state.
+  positionX?: number;
+  positionY?: number;
+  size?: number;
+  rotationDeg?: number;
+  /** 0..1 on scene_depth.png's greyscale scale (1 = right up against the lens). */
+  characterDepth?: number;
   /** Tints occluded pixels red so the depth cut is obvious. */
   debugOcclusion?: boolean;
 };
@@ -44,14 +61,13 @@ const SCENE_DEPTH_URL = resolveApiUrl('/api/demo-assets/ar-preview/scene_depth.p
 const CAMERA_FOV_DEG = 45;
 const CAMERA_DISTANCE = 4; // camera sits at (0, 0, CAMERA_DISTANCE), looking at the origin.
 
-// Starting placement. These are only slider defaults — tune them in the UI,
-// then paste the final numbers back here so the demo opens on a good shot.
-const DEFAULT_POSITION_X = 1.2;
-const DEFAULT_POSITION_Y = -0.5;
-const DEFAULT_SIZE = 1.8;
-const DEFAULT_ROTATION_DEG = 25;
-// 0..1 on scene_depth.png's greyscale scale (1 = right up against the lens).
-const DEFAULT_CHARACTER_DEPTH = 0.55;
+// Tuned starting values — the single source of truth for callers' initial
+// slider state. Re-tune in the UI, then paste the final numbers back here.
+export const DEFAULT_POSITION_X = 1.2;
+export const DEFAULT_POSITION_Y = -0.5;
+export const DEFAULT_SIZE = 1.8;
+export const DEFAULT_ROTATION_DEG = 25;
+export const DEFAULT_CHARACTER_DEPTH = 0.55;
 
 const COMPOSITE_VERTEX_SHADER = /* glsl */ `
   varying vec2 vUv;
@@ -113,15 +129,23 @@ const COMPOSITE_FRAGMENT_SHADER = /* glsl */ `
   }
 `;
 
-export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }: ARPreviewProps) {
+export function ARPreview({
+  modelUrl,
+  positionX = DEFAULT_POSITION_X,
+  positionY = DEFAULT_POSITION_Y,
+  size = DEFAULT_SIZE,
+  rotationDeg = DEFAULT_ROTATION_DEG,
+  characterDepth = DEFAULT_CHARACTER_DEPTH,
+  debugOcclusion = false,
+}: ARPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const renderRef = useRef<(() => void) | null>(null);
   const applyTransformRef = useRef<
-    ((x: number, y: number, size: number, rotationDeg: number) => void) | null
+    ((x: number, y: number, targetSize: number, rotation: number) => void) | null
   >(null);
 
   // Built once, mutated in place, handed straight to the ShaderMaterial — so
-  // the slider effects below can always reach live uniforms regardless of
+  // the prop-sync effects below can always reach live uniforms regardless of
   // when the WebGL effect happens to run.
   const uniformsRef = useRef<Record<string, THREE.IUniform>>({
     uPhoto: { value: null },
@@ -129,20 +153,13 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
     uModelColor: { value: null },
     uPhotoRepeat: { value: new THREE.Vector2(1, 1) },
     uPhotoOffset: { value: new THREE.Vector2(0, 0) },
-    uCharacterDepth: { value: DEFAULT_CHARACTER_DEPTH },
+    uCharacterDepth: { value: characterDepth },
     uFeather: { value: 0.012 },
     uDebug: { value: debugOcclusion ? 1 : 0 },
   });
 
   const [isLoading, setIsLoading] = useState(Boolean(modelUrl));
   const [error, setError] = useState<string | null>(null);
-
-  const [posX, setPosX] = useState(DEFAULT_POSITION_X);
-  const [posY, setPosY] = useState(DEFAULT_POSITION_Y);
-  const [size, setSize] = useState(DEFAULT_SIZE);
-  const [rotationDeg, setRotationDeg] = useState(DEFAULT_ROTATION_DEG);
-  const [characterDepth, setCharacterDepth] = useState(DEFAULT_CHARACTER_DEPTH);
-  const [debug, setDebug] = useState(debugOcclusion);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -217,6 +234,9 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
     function applyTransform(x: number, y: number, targetSize: number, rotation: number) {
       if (!model) {
         return;
+      }
+      if (![x, y, targetSize, rotation].every(Number.isFinite)) {
+        return; // Guard against NaN reaching model.position/scale.
       }
       const scale = targetSize / modelMaxDimension;
       // Always rebuilt from the measured original, never incremented.
@@ -323,7 +343,13 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
 
         model = gltf.scene;
         modelScene.add(model);
-        applyTransform(posX, posY, size, rotationDeg);
+        // Use the props' CURRENT values (via closure over the effect's own
+        // scope is wrong here since this callback can fire after props
+        // change — read from the refs updated by the prop-sync effect below
+        // is not possible yet on first load, so apply the values this
+        // effect closed over; the prop-sync effect will immediately correct
+        // it if a change happened in between).
+        applyTransform(positionX, positionY, size, rotationDeg);
         finishLoad();
       },
       undefined,
@@ -369,21 +395,23 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
       renderer.dispose();
       renderer.domElement.remove();
     };
-    // Only modelUrl rebuilds the WebGL scene; slider changes are pushed in
-    // through the refs below so the GLB is never re-downloaded.
+    // Only modelUrl rebuilds the WebGL scene; prop changes below are pushed
+    // in through the refs so the GLB is never re-downloaded on every drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelUrl]);
 
+  // Placement props -> re-apply transform (no GLB reload).
   useEffect(() => {
-    applyTransformRef.current?.(posX, posY, size, rotationDeg);
+    applyTransformRef.current?.(positionX, positionY, size, rotationDeg);
     renderRef.current?.();
-  }, [posX, posY, size, rotationDeg]);
+  }, [positionX, positionY, size, rotationDeg]);
 
+  // Depth/debug props -> push straight into the shader uniforms.
   useEffect(() => {
     uniformsRef.current.uCharacterDepth.value = characterDepth;
-    uniformsRef.current.uDebug.value = debug ? 1 : 0;
+    uniformsRef.current.uDebug.value = debugOcclusion ? 1 : 0;
     renderRef.current?.();
-  }, [characterDepth, debug]);
+  }, [characterDepth, debugOcclusion]);
 
   if (!modelUrl) {
     return (
@@ -401,86 +429,12 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
       {isLoading && <div className="viewer-overlay">Loading AR preview...</div>}
       {error && <div className="viewer-error">{error}</div>}
       <div ref={containerRef} className="three-canvas" aria-label="AR preview of the generated 3D asset" />
-      {controls && (
-        <div className="ar-preview-controls">
-          <SliderRow label="左右" value={posX} min={-3} max={3} step={0.02} onChange={setPosX} />
-          <SliderRow label="上下" value={posY} min={-2} max={2} step={0.02} onChange={setPosY} />
-          <SliderRow label="大小" value={size} min={0.4} max={3.5} step={0.02} onChange={setSize} />
-          <SliderRow
-            label="旋轉"
-            value={rotationDeg}
-            min={0}
-            max={360}
-            step={1}
-            decimals={0}
-            suffix="°"
-            onChange={setRotationDeg}
-          />
-          <SliderRow
-            label="深度"
-            value={characterDepth}
-            min={0}
-            max={1}
-            step={0.005}
-            onChange={setCharacterDepth}
-            hint="往右＝走到前面，往左＝退到後面被擋住"
-          />
-          <label className="ar-preview-controls-toggle">
-            <input type="checkbox" checked={debug} onChange={(event) => setDebug(event.target.checked)} />
-            標示被遮擋的區域
-          </label>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type SliderRowProps = {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-  decimals?: number;
-  suffix?: string;
-  hint?: string;
-};
-
-function SliderRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  decimals = 2,
-  suffix = '',
-  hint,
-}: SliderRowProps) {
-  return (
-    <div className="ar-preview-controls-row">
-      <span className="ar-preview-controls-label">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        aria-label={label}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <span className="hint">
-        {value.toFixed(decimals)}
-        {suffix}
-        {hint ? ` — ${hint}` : ''}
-      </span>
     </div>
   );
 }
 
 // No continuous rAF loop: this is a static shot, so render() only runs after
-// each async load, on resize, and when a slider changes.
+// each async load, on resize, and when a placement/depth prop changes.
 
 function addPreviewLights(scene: THREE.Scene) {
   scene.add(new THREE.AmbientLight(0xffffff, 1.1));

@@ -3039,8 +3039,12 @@ input::placeholder {
 }
 
 /* ===== AR Studio (frontend/src/pages/ARStudioPage.tsx) =====
-   Standalone tool page, same shape as .video-picker-* above: model picker on
-   one side, live AR preview on the other. */
+   Standalone tool page: model picker, live AR preview, and placement
+   controls as three side-by-side columns (not stacked) so that on a normal
+   laptop screen (~1440x900) the whole page — photo + all 5 sliders — fits
+   without scrolling. .ar-studio-list-panel gets a capped height with its
+   own internal scroll instead of pushing the page taller, since the model
+   list can grow arbitrarily long while the preview/controls columns can't. */
 .ar-studio-page {
   display: grid;
   gap: 16px;
@@ -3050,24 +3054,85 @@ input::placeholder {
 
 .ar-studio-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(280px, 1.2fr);
+  grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1.6fr) minmax(240px, 0.75fr);
   gap: 16px;
   align-items: start;
   min-width: 0;
 }
 
 .ar-studio-list-panel,
-.ar-studio-preview-panel {
+.ar-studio-preview-panel,
+.ar-studio-controls-panel {
   display: grid;
   gap: 16px;
   align-content: start;
   min-width: 0;
 }
 
-@media (max-width: 720px) {
+.ar-studio-list-panel {
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+
+@media (max-width: 960px) {
   .ar-studio-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .ar-studio-list-panel {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* ===== ARPlacementControls (frontend/src/components/ARPlacementControls.tsx) =====
+   In-flow controls (no absolute positioning) — sits in its own .panel
+   column/section, never overlaid on the photo/canvas. Row = label + range
+   + value on one line, optional hint text wrapping onto its own full-width
+   line underneath. */
+.ar-placement-controls {
+  display: grid;
+  gap: 14px;
+}
+
+.ar-placement-controls-row {
+  display: grid;
+  grid-template-columns: 3.4em minmax(0, 1fr) auto;
+  column-gap: 10px;
+  row-gap: 4px;
+  align-items: center;
+}
+
+.ar-placement-controls-label {
+  color: var(--gui-text-1);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.ar-placement-controls-row input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.ar-placement-controls-value {
+  min-width: 3.6em;
+  text-align: right;
+  font-family: var(--gui-mono);
+  font-size: 0.78rem;
+}
+
+.ar-placement-controls-hint {
+  grid-column: 1 / -1;
+  font-size: 0.74rem;
+}
+
+.ar-placement-controls-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gui-text-1);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 /* ===== Center orbital device (pure CSS, decorative) ===== */

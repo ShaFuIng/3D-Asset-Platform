@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiClientError, getLibraryAssets, resolveApiUrl } from '../api/client';
-import { ARPreview } from '../components/ARPreview';
+import {
+  ARPreview,
+  DEFAULT_CHARACTER_DEPTH,
+  DEFAULT_POSITION_X,
+  DEFAULT_POSITION_Y,
+  DEFAULT_ROTATION_DEG,
+  DEFAULT_SIZE,
+} from '../components/ARPreview';
+import { ARPlacementControls } from '../components/ARPlacementControls';
 import type { LibraryAsset } from '../types/api';
 
 function getErrorMessage(error: unknown): string {
@@ -23,6 +31,13 @@ export function ARStudioPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string>();
+
+  const [positionX, setPositionX] = useState(DEFAULT_POSITION_X);
+  const [positionY, setPositionY] = useState(DEFAULT_POSITION_Y);
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  const [rotationDeg, setRotationDeg] = useState(DEFAULT_ROTATION_DEG);
+  const [characterDepth, setCharacterDepth] = useState(DEFAULT_CHARACTER_DEPTH);
+  const [debugOcclusion, setDebugOcclusion] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -115,10 +130,42 @@ export function ARStudioPage() {
           </div>
           {selectedModelUrl ? (
             <div className="model-preview">
-              <ARPreview modelUrl={selectedModelUrl} controls />
+              <ARPreview
+                modelUrl={selectedModelUrl}
+                positionX={positionX}
+                positionY={positionY}
+                size={size}
+                rotationDeg={rotationDeg}
+                characterDepth={characterDepth}
+                debugOcclusion={debugOcclusion}
+              />
             </div>
           ) : (
             <div className="empty-state">請先在左側選擇一個模型，這裡才會顯示 AR 預覽。</div>
+          )}
+        </section>
+
+        <section className="panel ar-studio-controls-panel">
+          <div className="section-header">
+            <h2>角色位置</h2>
+          </div>
+          {selectedModelUrl ? (
+            <ARPlacementControls
+              positionX={positionX}
+              onPositionXChange={setPositionX}
+              positionY={positionY}
+              onPositionYChange={setPositionY}
+              size={size}
+              onSizeChange={setSize}
+              rotationDeg={rotationDeg}
+              onRotationDegChange={setRotationDeg}
+              characterDepth={characterDepth}
+              onCharacterDepthChange={setCharacterDepth}
+              debugOcclusion={debugOcclusion}
+              onDebugOcclusionChange={setDebugOcclusion}
+            />
+          ) : (
+            <p className="hint">選好模型後，這裡會出現位置、大小、旋轉與深度滑桿。</p>
           )}
         </section>
       </div>
