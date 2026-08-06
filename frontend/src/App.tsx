@@ -8,6 +8,7 @@ import {
 } from './api/client';
 import { ServiceStatusPanel } from './components/ServiceStatusPanel';
 import { WorkspaceProvider } from './context/WorkspaceContext';
+import { ARStudioPage } from './pages/ARStudioPage';
 import { DevARPreviewPage } from './pages/DevARPreviewPage';
 import { GenerateConfirmPage } from './pages/GenerateConfirmPage';
 import { HomePage } from './pages/HomePage';
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/reference" element={<ReferenceStagePage openai={openai} />} />
           <Route path="/video-upload" element={<VideoFramePickerPage />} />
+          <Route path="/ar-studio" element={<ARStudioPage />} />
           <Route path="/mode" element={<ModeSelectPage />} />
           <Route path="/views" element={<MultiviewStagePage comfy={comfy} openai={openai} />} />
           <Route path="/views/:imageId" element={<MultiviewStagePage comfy={comfy} openai={openai} />} />

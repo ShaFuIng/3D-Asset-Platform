@@ -24,7 +24,7 @@ export function DevARPreviewPage() {
           </p>
         )}
         <div className="model-preview">
-          <ARPreview modelUrl={modelUrl} />
+          <ARPreview modelUrl={modelUrl} controls debugOcclusion />
         </div>
       </section>
     </main>

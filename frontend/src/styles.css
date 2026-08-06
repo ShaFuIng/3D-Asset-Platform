@@ -505,18 +505,44 @@ code {
 }
 
 /* ===== ARPreview (frontend/src/components/ARPreview.tsx) =====
-   Foreground occlusion layer: a plain <img>, not part of the Three.js scene
-   (see ARPreview.tsx). Sits above the plain-flow .three-canvas, below the
-   z-index:2 toolbar/stats so those never get hidden behind an opaque part
-   of the mask. */
-.ar-preview-mask {
+   Dev-only calibration panel (calibrationUI prop) for tuning the photo's
+   near/far depth mapping live. Mirrors .viewer-toolbar's dark translucent
+   chip styling, but anchored to the opposite (bottom-left) corner so it
+   never collides with .viewer-toolbar/.viewer-stats. */
+.ar-preview-calibration {
   position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  max-width: calc(100% - 20px);
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(24, 29, 32, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.ar-preview-calibration label {
+  display: grid;
+  gap: 3px;
+  color: #e5e7eb;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.ar-preview-calibration input[type='range'] {
+  width: 160px;
+}
+
+.ar-preview-calibration .ar-preview-calibration-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
 .viewer-overlay,
@@ -775,6 +801,15 @@ code {
 
   .viewer-toolbar label,
   .viewer-toolbar select {
+    width: 100%;
+  }
+
+  .ar-preview-calibration {
+    align-items: stretch;
+  }
+
+  .ar-preview-calibration label,
+  .ar-preview-calibration input[type='range'] {
     width: 100%;
   }
 }
@@ -1833,6 +1868,11 @@ code {
   font-weight: 800;
 }
 
+.asset-card[data-selected='true'] {
+  border-color: #6d9fc4;
+  box-shadow: 0 0 0 2px rgba(109, 159, 196, 0.24);
+}
+
 .library-modal {
   position: fixed;
   inset: 0;
@@ -2423,6 +2463,12 @@ input::placeholder {
   font-family: var(--gui-mono);
 }
 
+.ar-preview-calibration {
+  border-color: var(--gui-line-strong);
+  border-radius: var(--gui-radius);
+  background: rgba(7, 9, 12, 0.88);
+}
+
 .viewer-overlay,
 .viewer-error {
   border-radius: var(--gui-radius);
@@ -2988,6 +3034,38 @@ input::placeholder {
 @media (max-width: 720px) {
   .video-picker-layout,
   .video-picker-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===== AR Studio (frontend/src/pages/ARStudioPage.tsx) =====
+   Standalone tool page, same shape as .video-picker-* above: model picker on
+   one side, live AR preview on the other. */
+.ar-studio-page {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.ar-studio-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(280px, 1.2fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.ar-studio-list-panel,
+.ar-studio-preview-panel {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .ar-studio-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -3618,6 +3696,11 @@ input::placeholder {
   color: var(--gui-accent);
 }
 
+.asset-card[data-selected='true'] {
+  border-color: var(--gui-accent);
+  box-shadow: none;
+}
+
 /* ===== Reduced motion additions for round-2 elements ===== */
 @media (prefers-reduced-motion: reduce) {
   .session-nav-item[data-state='available']:hover,
@@ -3680,4 +3763,41 @@ input::placeholder {
   .home-center-entry:focus-visible .home-center-cta-arrow {
     transform: none;
   }
+}
+.ar-preview-controls {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(10, 14, 18, 0.85);
+  color: #e6edf3;
+  font-size: 12px;
+  z-index: 10;
+  pointer-events: auto;
+}
+.ar-preview-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ar-preview-controls-label {
+  width: 3em;
+  flex-shrink: 0;
+}
+.ar-preview-controls input[type='range'] {
+  width: 200px;
+  flex-shrink: 0;
+}
+.ar-preview-controls .hint {
+  color: #9fb0c0;
+}
+.ar-preview-controls-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

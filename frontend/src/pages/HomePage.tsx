@@ -148,7 +148,22 @@ export function HomePage({ backend, openai, comfy }: HomePageProps) {
             </Link>
           </section>
 
-          <section className="panel home-status-panel stagger" style={staggerStyle(3)}>
+          <section className="panel home-video-picker-panel stagger" style={staggerStyle(3)}>
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">AR STUDIO</p>
+                <h2>AR 預覽工作室</h2>
+              </div>
+            </div>
+            <p className="hint">
+              從資產庫挑一個已生成的 3D 模型，直接看它合成進 AR 展示照片的效果，不需要重新走一次完整的生成流程。
+            </p>
+            <Link className="home-video-picker-link" to="/ar-studio">
+              開啟 AR 預覽工作室 →
+            </Link>
+          </section>
+
+          <section className="panel home-status-panel stagger" style={staggerStyle(4)}>
             <div className="section-header">
               <h2>服務狀態</h2>
               <span>SERVICES</span>

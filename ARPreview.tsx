@@ -4,37 +4,39 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { resolveApiUrl } from '../api/client';
 
 /*
- * AR preview (demo): composites the generated GLB into a real photo.
+ * AR preview (demo): composites the generated GLB into a real photo using
+ * PER-PIXEL DEPTH COMPARISON rather than a pre-baked 2D alpha mask.
  *
- * Occlusion model — the character sits at ONE depth in the scene, and every
- * photo pixel nearer than that depth covers it:
+ * How it works (two render passes):
+ *   1. The model is rendered alone into a WebGLRenderTarget that also
+ *      carries a DepthTexture, so we keep both its colour and its depth.
+ *   2. A full-screen quad composites photo + model. For every pixel it
+ *      linearises the model's depth-buffer value into a real distance from
+ *      the camera, converts the photo's greyscale depth value into a
+ *      distance using the calibration below, and shows whichever is nearer.
  *
- *     depth(photo pixel) > characterDepth  ->  the photo wins (occlusion)
- *
- * scene_depth.png comes from Depth Anything V2, where BRIGHT = NEAR, so a
- * larger greyscale value means closer to the camera. characterDepth is on
- * that same 0..1 greyscale scale: raise it and the character walks toward
- * the camera (in front of the bottle), lower it and the character retreats
- * behind the bottle, the mug, the laptop, and so on.
- *
- * Why not compare against the model's own per-pixel depth buffer: the model
- * is a 3D object, so its depth varies across its surface, and a monocular
- * depth map varies smoothly too. Subtracting the two gives a slowly varying
- * difference across the whole model, which dissolves it in a soft gradient
- * instead of cutting it cleanly along the bottle's edge. Treating the
- * character as a single depth keeps the occlusion edge hard, which is what
- * actually reads as "standing behind that object".
+ * Why this replaces the old mask approach: a flat mask PNG has no idea where
+ * the model actually sits in 3D, so it cuts the model along a fixed
+ * silhouette regardless of depth — which is how the model ended up sliced
+ * across the middle. Comparing depths per pixel makes occlusion a genuine
+ * front/back relationship, so the model can be placed anywhere and still be
+ * occluded correctly.
  *
  * Camera is fixed (no OrbitControls) — this is a still "photo mockup" shot.
- * scene_mask.png is no longer used by this component.
+ * scene_depth.png comes straight from Depth Anything V2 (near = bright,
+ * far = dark). scene_mask.png is no longer used by this component.
  */
 
 type ARPreviewProps = {
   modelUrl?: string;
-  /** Shows the placement sliders. */
-  controls?: boolean;
-  /** Tints occluded pixels red so the depth cut is obvious. */
+  /** Distance (world units from the camera) represented by the BRIGHTEST depth pixel. */
+  nearDistance?: number;
+  /** Distance (world units from the camera) represented by the DARKEST depth pixel. */
+  farDistance?: number;
+  /** Tints occluded pixels red so it is obvious which pixels the depth test rejected. */
   debugOcclusion?: boolean;
+  /** Shows sliders for tuning nearDistance / farDistance live. Dev use only. */
+  calibrationUI?: boolean;
 };
 
 const SCENE_IMAGE_URL = resolveApiUrl('/api/demo-assets/ar-preview/scene.png');
@@ -42,16 +44,28 @@ const SCENE_DEPTH_URL = resolveApiUrl('/api/demo-assets/ar-preview/scene_depth.p
 
 // Fixed "camera" for the demo shot.
 const CAMERA_FOV_DEG = 45;
+const CAMERA_NEAR = 0.1;
+const CAMERA_FAR = 100;
 const CAMERA_DISTANCE = 4; // camera sits at (0, 0, CAMERA_DISTANCE), looking at the origin.
 
-// Starting placement. These are only slider defaults — tune them in the UI,
-// then paste the final numbers back here so the demo opens on a good shot.
-const DEFAULT_POSITION_X = 1.2;
-const DEFAULT_POSITION_Y = -0.5;
-const DEFAULT_SIZE = 1.8;
-const DEFAULT_ROTATION_DEG = 25;
-// 0..1 on scene_depth.png's greyscale scale (1 = right up against the lens).
-const DEFAULT_CHARACTER_DEPTH = 0.55;
+// Placement of the model within the fixed shot, applied AFTER auto-centering
+// and normalising the loaded GLB (different jobs produce wildly different raw
+// scales/origins, same reason ModelViewer.tsx computes a bounding box).
+//
+// Unlike the old mask version, MODEL_OFFSET.z is now MEANINGFUL: it decides
+// how far from the camera the model sits, and therefore what it occludes and
+// what occludes it. Camera distance is 4, so z = +0.5 puts the model 3.5
+// units from the camera.
+const MODEL_TARGET_SIZE = 1.8;
+const MODEL_OFFSET = new THREE.Vector3(1.4, -0.5, 0.5);
+const MODEL_ROTATION_Y = THREE.MathUtils.degToRad(25);
+
+// Calibration defaults. Depth Anything outputs RELATIVE depth, so these two
+// numbers map its 0..1 greyscale range onto real distances in this scene.
+// Tune them with calibrationUI until the model's feet sit convincingly
+// behind the bottle, then paste the final values back here.
+const DEFAULT_NEAR_DISTANCE = 2.2;
+const DEFAULT_FAR_DISTANCE = 14;
 
 const COMPOSITE_VERTEX_SHADER = /* glsl */ `
   varying vec2 vUv;
@@ -62,19 +76,25 @@ const COMPOSITE_VERTEX_SHADER = /* glsl */ `
 `;
 
 const COMPOSITE_FRAGMENT_SHADER = /* glsl */ `
+  #include <packing>
+
   uniform sampler2D uPhoto;
   uniform sampler2D uPhotoDepth;
   uniform sampler2D uModelColor;
+  uniform sampler2D uModelDepth;
   uniform vec2 uPhotoRepeat;
   uniform vec2 uPhotoOffset;
-  uniform float uCharacterDepth;
+  uniform float uCameraNear;
+  uniform float uCameraFar;
+  uniform float uNearDistance;
+  uniform float uFarDistance;
   uniform float uFeather;
   uniform float uDebug;
 
   varying vec2 vUv;
 
-  // The photo and depth PNGs are sampled raw (colorSpace = NoColorSpace) so
-  // the depth values stay untouched; the photo therefore needs decoding here.
+  // Photo/depth PNGs are sampled raw (colorSpace = NoColorSpace) so the depth
+  // values stay untouched; the photo therefore needs decoding by hand.
   vec3 sRGBToLinear(vec3 c) {
     return mix(
       c / 12.92,
@@ -93,16 +113,18 @@ const COMPOSITE_FRAGMENT_SHADER = /* glsl */ `
       return;
     }
 
-    // Bright = near. Anything brighter than the character's own depth is in
-    // front of it. uFeather is only wide enough to anti-alias the edge.
-    float grey = texture2D(uPhotoDepth, photoUv).r;
-    float occlusion = smoothstep(
-      uCharacterDepth - uFeather,
-      uCharacterDepth + uFeather,
-      grey
-    );
+    // Model depth: linearise the depth buffer into distance from the camera.
+    float rawDepth = texture2D(uModelDepth, vUv).x;
+    float modelDistance = -perspectiveDepthToViewZ(rawDepth, uCameraNear, uCameraFar);
 
+    // Photo depth: bright = near, dark = far.
+    float grey = texture2D(uPhotoDepth, photoUv).r;
+    float photoDistance = mix(uFarDistance, uNearDistance, grey);
+
+    // occlusion = 1 when the photo is in front of the model.
+    float occlusion = smoothstep(-uFeather, uFeather, modelDistance - photoDistance);
     float visible = model.a * (1.0 - occlusion);
+
     vec3 color = mix(photo, model.rgb, visible);
 
     if (uDebug > 0.5) {
@@ -113,35 +135,21 @@ const COMPOSITE_FRAGMENT_SHADER = /* glsl */ `
   }
 `;
 
-export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }: ARPreviewProps) {
+export function ARPreview({
+  modelUrl,
+  nearDistance = DEFAULT_NEAR_DISTANCE,
+  farDistance = DEFAULT_FAR_DISTANCE,
+  debugOcclusion = false,
+  calibrationUI = false,
+}: ARPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const uniformsRef = useRef<Record<string, THREE.IUniform> | null>(null);
   const renderRef = useRef<(() => void) | null>(null);
-  const applyTransformRef = useRef<
-    ((x: number, y: number, size: number, rotationDeg: number) => void) | null
-  >(null);
-
-  // Built once, mutated in place, handed straight to the ShaderMaterial — so
-  // the slider effects below can always reach live uniforms regardless of
-  // when the WebGL effect happens to run.
-  const uniformsRef = useRef<Record<string, THREE.IUniform>>({
-    uPhoto: { value: null },
-    uPhotoDepth: { value: null },
-    uModelColor: { value: null },
-    uPhotoRepeat: { value: new THREE.Vector2(1, 1) },
-    uPhotoOffset: { value: new THREE.Vector2(0, 0) },
-    uCharacterDepth: { value: DEFAULT_CHARACTER_DEPTH },
-    uFeather: { value: 0.012 },
-    uDebug: { value: debugOcclusion ? 1 : 0 },
-  });
 
   const [isLoading, setIsLoading] = useState(Boolean(modelUrl));
   const [error, setError] = useState<string | null>(null);
-
-  const [posX, setPosX] = useState(DEFAULT_POSITION_X);
-  const [posY, setPosY] = useState(DEFAULT_POSITION_Y);
-  const [size, setSize] = useState(DEFAULT_SIZE);
-  const [rotationDeg, setRotationDeg] = useState(DEFAULT_ROTATION_DEG);
-  const [characterDepth, setCharacterDepth] = useState(DEFAULT_CHARACTER_DEPTH);
+  const [near, setNear] = useState(nearDistance);
+  const [far, setFar] = useState(farDistance);
   const [debug, setDebug] = useState(debugOcclusion);
 
   useEffect(() => {
@@ -152,25 +160,18 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
       return;
     }
     const mount = container;
-    const uniforms = uniformsRef.current;
 
     let disposed = false;
     let photoTexture: THREE.Texture | null = null;
     let photoDepthTexture: THREE.Texture | null = null;
-    let model: THREE.Object3D | null = null;
-    // Measured once from the raw GLB so every transform is recomputed from
-    // scratch rather than accumulated on top of the previous one.
-    const modelCenter = new THREE.Vector3();
-    let modelMaxDimension = 1;
-
     setIsLoading(true);
     setError(null);
 
-    // --- Pass 1: the model alone, into a transparent render target -------
+    // --- Pass 1: the model on its own -------------------------------------
     const modelScene = new THREE.Scene();
     addPreviewLights(modelScene);
 
-    const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, 0.01, 1000);
+    const camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, CAMERA_NEAR, CAMERA_FAR);
     camera.position.set(0, 0, CAMERA_DISTANCE);
     camera.lookAt(0, 0, 0);
 
@@ -180,13 +181,33 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
     renderer.shadowMap.enabled = false;
     mount.appendChild(renderer.domElement);
 
+    const depthTexture = new THREE.DepthTexture(1, 1);
+    depthTexture.format = THREE.DepthFormat;
+    depthTexture.type = THREE.UnsignedIntType;
+
     const modelTarget = new THREE.WebGLRenderTarget(1, 1, {
+      depthTexture,
       depthBuffer: true,
       stencilBuffer: false,
     });
-    uniforms.uModelColor.value = modelTarget.texture;
 
-    // --- Pass 2: full-screen composite -----------------------------------
+    // --- Pass 2: full-screen composite ------------------------------------
+    const uniforms: Record<string, THREE.IUniform> = {
+      uPhoto: { value: null },
+      uPhotoDepth: { value: null },
+      uModelColor: { value: modelTarget.texture },
+      uModelDepth: { value: modelTarget.depthTexture },
+      uPhotoRepeat: { value: new THREE.Vector2(1, 1) },
+      uPhotoOffset: { value: new THREE.Vector2(0, 0) },
+      uCameraNear: { value: CAMERA_NEAR },
+      uCameraFar: { value: CAMERA_FAR },
+      uNearDistance: { value: near },
+      uFarDistance: { value: far },
+      uFeather: { value: 0.04 },
+      uDebug: { value: debug ? 1 : 0 },
+    };
+    uniformsRef.current = uniforms;
+
     const compositeScene = new THREE.Scene();
     const compositeCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const compositeMaterial = new THREE.ShaderMaterial({
@@ -213,18 +234,6 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
       renderer.render(compositeScene, compositeCamera);
     }
     renderRef.current = render;
-
-    function applyTransform(x: number, y: number, targetSize: number, rotation: number) {
-      if (!model) {
-        return;
-      }
-      const scale = targetSize / modelMaxDimension;
-      // Always rebuilt from the measured original, never incremented.
-      model.scale.setScalar(scale);
-      model.position.copy(modelCenter).multiplyScalar(-scale).add(new THREE.Vector3(x, y, 0));
-      model.rotation.set(0, THREE.MathUtils.degToRad(rotation), 0);
-    }
-    applyTransformRef.current = applyTransform;
 
     /** Mirrors CSS `background-size: cover` for both photo and depth map. */
     function fitPhotoUv() {
@@ -267,6 +276,8 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
 
     const textureLoader = new THREE.TextureLoader();
 
+    // Sampled raw: the shader decodes the photo itself, and the depth map is
+    // data rather than colour so it must not be colour-managed at all.
     textureLoader.load(
       SCENE_IMAGE_URL,
       (texture) => {
@@ -294,7 +305,6 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
           texture.dispose();
           return;
         }
-        // Depth is data, not colour: no colour management, no mipmaps.
         texture.colorSpace = THREE.NoColorSpace;
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
@@ -316,19 +326,27 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
           disposeObject(gltf.scene);
           return;
         }
-        const box = new THREE.Box3().setFromObject(gltf.scene);
-        box.getCenter(modelCenter);
-        const measured = box.getSize(new THREE.Vector3());
-        modelMaxDimension = Math.max(measured.x, measured.y, measured.z) || 1;
-
-        model = gltf.scene;
-        modelScene.add(model);
-        applyTransform(posX, posY, size, rotationDeg);
+        placeModel(gltf.scene);
+        modelScene.add(gltf.scene);
         finishLoad();
       },
       undefined,
       () => failLoad('無法載入這個 GLB 模型。'),
     );
+
+    function placeModel(model: THREE.Object3D) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDimension = Math.max(size.x, size.y, size.z) || 1;
+      const scale = MODEL_TARGET_SIZE / maxDimension;
+
+      model.position.sub(center);
+      model.scale.setScalar(scale);
+      model.position.multiplyScalar(scale);
+      model.position.add(MODEL_OFFSET);
+      model.rotation.y = MODEL_ROTATION_Y;
+    }
 
     function resize() {
       const width = mount.clientWidth || 1;
@@ -352,8 +370,8 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
 
     return () => {
       disposed = true;
+      uniformsRef.current = null;
       renderRef.current = null;
-      applyTransformRef.current = null;
       resizeObserver.disconnect();
       modelScene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
@@ -364,26 +382,25 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
       compositeQuad.geometry.dispose();
       compositeMaterial.dispose();
       modelTarget.dispose();
+      depthTexture.dispose();
       photoTexture?.dispose();
       photoDepthTexture?.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
-    // Only modelUrl rebuilds the WebGL scene; slider changes are pushed in
-    // through the refs below so the GLB is never re-downloaded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelUrl]);
 
+  // Live calibration: push slider values into the shader and redraw.
   useEffect(() => {
-    applyTransformRef.current?.(posX, posY, size, rotationDeg);
+    const uniforms = uniformsRef.current;
+    if (!uniforms) {
+      return;
+    }
+    uniforms.uNearDistance.value = near;
+    uniforms.uFarDistance.value = far;
+    uniforms.uDebug.value = debug ? 1 : 0;
     renderRef.current?.();
-  }, [posX, posY, size, rotationDeg]);
-
-  useEffect(() => {
-    uniformsRef.current.uCharacterDepth.value = characterDepth;
-    uniformsRef.current.uDebug.value = debug ? 1 : 0;
-    renderRef.current?.();
-  }, [characterDepth, debug]);
+  }, [near, far, debug]);
 
   if (!modelUrl) {
     return (
@@ -396,38 +413,38 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
   return (
     <div className="viewer-shell">
       <div className="viewer-stats" aria-live="polite">
-        AR Preview（Demo：固定機位、深度遮擋）
+        AR Preview（Demo：固定機位、逐像素深度遮擋）
       </div>
       {isLoading && <div className="viewer-overlay">Loading AR preview...</div>}
       {error && <div className="viewer-error">{error}</div>}
       <div ref={containerRef} className="three-canvas" aria-label="AR preview of the generated 3D asset" />
-      {controls && (
-        <div className="ar-preview-controls">
-          <SliderRow label="左右" value={posX} min={-3} max={3} step={0.02} onChange={setPosX} />
-          <SliderRow label="上下" value={posY} min={-2} max={2} step={0.02} onChange={setPosY} />
-          <SliderRow label="大小" value={size} min={0.4} max={3.5} step={0.02} onChange={setSize} />
-          <SliderRow
-            label="旋轉"
-            value={rotationDeg}
-            min={0}
-            max={360}
-            step={1}
-            decimals={0}
-            suffix="°"
-            onChange={setRotationDeg}
-          />
-          <SliderRow
-            label="深度"
-            value={characterDepth}
-            min={0}
-            max={1}
-            step={0.005}
-            onChange={setCharacterDepth}
-            hint="往右＝走到前面，往左＝退到後面被擋住"
-          />
-          <label className="ar-preview-controls-toggle">
+      {calibrationUI && (
+        <div className="ar-preview-calibration">
+          <label>
+            近 {near.toFixed(2)}
+            <input
+              type="range"
+              min={0.5}
+              max={8}
+              step={0.05}
+              value={near}
+              onChange={(event) => setNear(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            遠 {far.toFixed(1)}
+            <input
+              type="range"
+              min={4}
+              max={40}
+              step={0.5}
+              value={far}
+              onChange={(event) => setFar(Number(event.target.value))}
+            />
+          </label>
+          <label className="ar-preview-calibration-toggle">
             <input type="checkbox" checked={debug} onChange={(event) => setDebug(event.target.checked)} />
-            標示被遮擋的區域
+            標示被遮擋像素
           </label>
         </div>
       )}
@@ -435,52 +452,8 @@ export function ARPreview({ modelUrl, controls = false, debugOcclusion = false }
   );
 }
 
-type SliderRowProps = {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-  decimals?: number;
-  suffix?: string;
-  hint?: string;
-};
-
-function SliderRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  decimals = 2,
-  suffix = '',
-  hint,
-}: SliderRowProps) {
-  return (
-    <div className="ar-preview-controls-row">
-      <span className="ar-preview-controls-label">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        aria-label={label}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <span className="hint">
-        {value.toFixed(decimals)}
-        {suffix}
-        {hint ? ` — ${hint}` : ''}
-      </span>
-    </div>
-  );
-}
-
 // No continuous rAF loop: this is a static shot, so render() only runs after
-// each async load, on resize, and when a slider changes.
+// each async load, on resize, and when a calibration value changes.
 
 function addPreviewLights(scene: THREE.Scene) {
   scene.add(new THREE.AmbientLight(0xffffff, 1.1));
