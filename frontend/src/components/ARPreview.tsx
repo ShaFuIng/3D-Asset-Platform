@@ -29,10 +29,30 @@ const BACKGROUND_DISTANCE = 10; // how far behind the origin the background plan
 // wildly different raw scales/origins (same reason ModelViewer.tsx computes
 // a bounding box instead of hardcoding a camera position), so a literal
 // hardcoded position/scale would only ever look right for one specific
-// model. Tweak these three constants to match the real demo footage once
-// it's swapped in.
-const MODEL_TARGET_SIZE = 1.6; // normalized so the model's longest side is this many world units.
-const MODEL_OFFSET = new THREE.Vector3(0, -0.4, 0.5);
+// model.
+//
+// Tuned (2026-08-05) for the current demo-assets/ar-preview/scene.png: sits
+// on the clear desk gap between the mug and the laptop, sized close to the
+// water bottle, with its right edge genuinely behind the bottle's mask
+// silhouette (verified by sampling rendered pixel colors across several
+// rows: a straight vertical seam where the model's flat gray abruptly
+// becomes the bottle's blue/green, not the model's own curved edge —
+// eyeballing a screenshot alone was not enough to tell the difference here
+// and previously led to a placement that only looked adjacent to the
+// bottle without any real occlusion).
+//
+// Re-tune these three constants whenever scene.png is replaced, and
+// re-verify the same way: temporarily blow up MODEL_TARGET_SIZE so the
+// occlusion is unmistakable in a screenshot, then check the "cut" edge is a
+// straight seam (real occlusion) rather than the model's own silhouette.
+//
+// Known limitation: because the model sits at a fixed world position while
+// the background photo is "cover"-cropped to fit the container, this
+// placement is tuned for the viewer panel's normal (wide) aspect ratio.
+// Very narrow/tall containers crop the photo very differently and can shift
+// the model noticeably relative to the mug/bottle/laptop.
+const MODEL_TARGET_SIZE = 1.8; // normalized so the model's longest side is this many world units.
+const MODEL_OFFSET = new THREE.Vector3(1.8, -0.55, 0.5);
 const MODEL_ROTATION_Y = THREE.MathUtils.degToRad(25);
 
 export function ARPreview({ modelUrl }: ARPreviewProps) {
@@ -84,7 +104,12 @@ export function ARPreview({ modelUrl }: ARPreviewProps) {
     function fitBackgroundPlane() {
       const width = mount.clientWidth || 1;
       const height = mount.clientHeight || 1;
-      const viewHeight = 2 * BACKGROUND_DISTANCE * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV_DEG) / 2);
+      // Frustum size scales with distance FROM THE CAMERA, not from the
+      // origin — the camera itself sits CAMERA_DISTANCE in front of the
+      // origin, so the plane (BACKGROUND_DISTANCE behind the origin) is
+      // actually CAMERA_DISTANCE + BACKGROUND_DISTANCE away from the camera.
+      const distanceFromCamera = CAMERA_DISTANCE + BACKGROUND_DISTANCE;
+      const viewHeight = 2 * distanceFromCamera * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV_DEG) / 2);
       const viewWidth = viewHeight * (width / height);
       backgroundPlane.scale.set(viewWidth, viewHeight, 1);
 

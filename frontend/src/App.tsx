@@ -8,6 +8,7 @@ import {
 } from './api/client';
 import { ServiceStatusPanel } from './components/ServiceStatusPanel';
 import { WorkspaceProvider } from './context/WorkspaceContext';
+import { DevARPreviewPage } from './pages/DevARPreviewPage';
 import { GenerateConfirmPage } from './pages/GenerateConfirmPage';
 import { HomePage } from './pages/HomePage';
 import { JobProgressPage } from './pages/JobProgressPage';
@@ -79,6 +80,9 @@ export default function App() {
           <Route path="/generate" element={<GenerateConfirmPage comfy={comfy} />} />
           <Route path="/jobs/:pipeline/:jobId" element={<JobProgressPage />} />
           <Route path="/viewer/:pipeline/:jobId" element={<ViewerStagePage />} />
+          {import.meta.env.DEV && (
+            <Route path="/dev/ar-preview" element={<DevARPreviewPage />} />
+          )}
           <Route path="/three-view" element={<Navigate to="/views" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

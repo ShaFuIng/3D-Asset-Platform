@@ -1,1 +1,1 @@
-PLACEHOLDER ONLY — 來自ParkLens的test case,只用來驗證AR預覽pipeline邏輯是否正確,不是NCU demo最終展示場景。正式場景選好後直接覆蓋這兩個檔案即可。
+正式Demo場景 — IMG_1867.jpg,已於08/05轉換並縮放至1600x1200。寶特瓶為近景遮擋物,深度慣例為近=亮/遠=暗,generate_ar_mask.py不加--invert。

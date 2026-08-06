@@ -18,3 +18,4 @@ storage/models/*
 # Local tool caches
 .vite/
 .pytest_cache/
+tmp-review/
