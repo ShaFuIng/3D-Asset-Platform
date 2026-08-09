@@ -420,7 +420,14 @@ export function LibraryPage() {
               ×
             </button>
             <h3>{modelAsset.filename}</h3>
-            <ModelViewer src={modelAsset.status === 'available' ? resolveApiUrl(modelAsset.content_url) : undefined} />
+            <ModelViewer
+              src={modelAsset.status === 'available' ? resolveApiUrl(modelAsset.content_url) : undefined}
+              usdzUrl={
+                modelAsset.status === 'available'
+                  ? resolveApiUrl(`/api/library/assets/${modelAsset.asset_id}/usdz`)
+                  : undefined
+              }
+            />
           </div>
         </div>
       )}
