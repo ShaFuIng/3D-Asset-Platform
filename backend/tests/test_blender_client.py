@@ -165,3 +165,63 @@ def test_health_raises_when_version_check_exits_nonzero(settings, monkeypatch):
 
     with pytest.raises(BlenderClientError, match="Blender executable is not runnable"):
         asyncio.run(client.health())
+
+
+def test_convert_or_raise_skips_conversion_on_cache_hit(settings, tmp_path):
+    destination = tmp_path / "cached.usdz"
+    destination.write_bytes(VALID_USDZ_BYTES)
+    # Deliberately unconfigured -- if convert_or_raise tried to convert
+    # instead of returning early on the cache hit, this would raise.
+    client = BlenderClient(settings)
+
+    asyncio.run(client.convert_or_raise(tmp_path / "model.glb", destination))
+
+
+def test_convert_or_raise_without_blender_configured_returns_api_error(settings, tmp_path):
+    client = BlenderClient(settings)
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(
+            client.convert_or_raise(tmp_path / "model.glb", tmp_path / "out.usdz")
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.code == "blender_not_configured"
+
+
+def test_convert_or_raise_success_writes_destination(settings, tmp_path, monkeypatch):
+    glb_path = tmp_path / "model.glb"
+    glb_path.write_bytes(b"glTF-stub")
+    destination = tmp_path / "out.usdz"
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        destination.write_bytes(VALID_USDZ_BYTES)
+        return FakeProcess(returncode=0)
+
+    monkeypatch.setattr(
+        blender_client_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    client = BlenderClient(configured_settings(settings))
+
+    asyncio.run(client.convert_or_raise(glb_path, destination))
+
+    assert destination.read_bytes() == VALID_USDZ_BYTES
+
+
+def test_convert_or_raise_conversion_failure_returns_api_error(settings, tmp_path, monkeypatch):
+    glb_path = tmp_path / "model.glb"
+    glb_path.write_bytes(b"glTF-stub")
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        return FakeProcess(returncode=1, stderr=b"glb_to_usdz failed: boom\n")
+
+    monkeypatch.setattr(
+        blender_client_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    client = BlenderClient(configured_settings(settings))
+
+    with pytest.raises(ApiError) as exc_info:
+        asyncio.run(client.convert_or_raise(glb_path, tmp_path / "out.usdz"))
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.code == "usdz_conversion_failed"

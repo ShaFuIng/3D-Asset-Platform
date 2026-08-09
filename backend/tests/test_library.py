@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from app.asset_catalog import AssetRecord
 from app.asset_usage import AssetUsageGuard
-from tests.conftest import GLB_BYTES, PNG_BYTES
+from app.services.blender_client import BlenderClientError
+from tests.conftest import FakeBlenderClient, GLB_BYTES, PNG_BYTES, USDZ_BYTES
 
 
 def test_list_filters_sort_pagination_and_total(client: TestClient) -> None:
@@ -82,6 +83,75 @@ def test_detail_and_content_for_image_and_model(client: TestClient) -> None:
     model_content = client.get(f"/api/library/assets/{model.asset_id}/content")
     assert model_content.status_code == 200
     assert model_content.headers["content-type"].startswith("model/gltf-binary")
+
+
+def _register_model_asset(client: TestClient, upload: dict) -> AssetRecord:
+    model_path = client.app.state.storage.models_dir / f"{uuid.uuid4()}.glb"
+    model_path.write_bytes(GLB_BYTES)
+    return client.app.state.storage.register_model_file(
+        model_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+
+
+def test_model_asset_usdz_converts_once_and_caches(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    model = _register_model_asset(client, upload)
+    blender = client.app.state.blender_client
+    assert isinstance(blender, FakeBlenderClient)
+
+    first = client.get(f"/api/library/assets/{model.asset_id}/usdz")
+    second = client.get(f"/api/library/assets/{model.asset_id}/usdz")
+
+    assert first.status_code == 200
+    assert first.headers["content-type"].startswith("model/vnd.usdz+zip")
+    assert first.content == USDZ_BYTES
+    assert second.status_code == 200
+    assert second.content == USDZ_BYTES
+    assert len(blender.calls) == 1
+
+
+def test_image_asset_usdz_returns_400(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+
+    response = client.get(f"/api/library/assets/{upload['image_id']}/usdz")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_asset_type"
+
+
+def test_model_asset_usdz_without_blender_configured_returns_503(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    model = _register_model_asset(client, upload)
+    client.app.state.blender_client = FakeBlenderClient(configured=False)
+
+    response = client.get(f"/api/library/assets/{model.asset_id}/usdz")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "blender_not_configured"
+
+
+def test_model_asset_usdz_conversion_failure_returns_502_without_affecting_content(
+    client: TestClient,
+) -> None:
+    upload = _upload(client, "asset.png")
+    model = _register_model_asset(client, upload)
+    client.app.state.blender_client = FakeBlenderClient(
+        error=BlenderClientError("Blender GLB to USDZ conversion failed: boom")
+    )
+
+    usdz_response = client.get(f"/api/library/assets/{model.asset_id}/usdz")
+    content_response = client.get(f"/api/library/assets/{model.asset_id}/content")
+
+    assert usdz_response.status_code == 502
+    assert usdz_response.json()["error"]["code"] == "usdz_conversion_failed"
+    # A failed USDZ conversion must not affect the GLB content endpoint.
+    assert content_response.status_code == 200
+    assert content_response.content == GLB_BYTES
 
 
 def test_trash_content_is_still_readable_and_missing_content_returns_409(client: TestClient) -> None:

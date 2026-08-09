@@ -47,6 +47,30 @@ class BlenderClient:
                 "Blender is not available for GLB to USDZ conversion.",
             ) from exc
 
+    async def convert_or_raise(self, glb_path: Path, destination: Path) -> None:
+        """convert_glb_to_usdz(), skipped on a cache hit and with
+        BlenderClientError mapped to the ApiError shape shared by every
+        `.../usdz` endpoint (jobs_3d.py, multiview.py, library.py) -- 503
+        blender_not_configured / 502 usdz_conversion_failed. Kept in one
+        place instead of three near-identical try/excepts per router.
+        """
+        if destination.exists():
+            return
+        if not self.settings.blender_executable:
+            raise ApiError(
+                503,
+                "blender_not_configured",
+                "BLENDER_EXECUTABLE is not configured; USDZ export is unavailable.",
+            )
+        try:
+            await self.convert_glb_to_usdz(glb_path, destination)
+        except BlenderClientError as exc:
+            raise ApiError(
+                502,
+                "usdz_conversion_failed",
+                "Could not convert this model to USDZ for iOS AR.",
+            ) from exc
+
     async def convert_glb_to_usdz(self, glb_path: Path, destination: Path) -> None:
         if not self.settings.blender_executable:
             raise BlenderClientError("BLENDER_EXECUTABLE is not configured.")

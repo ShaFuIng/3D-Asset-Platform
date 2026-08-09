@@ -5,7 +5,6 @@ from fastapi.responses import FileResponse
 
 from ..errors import ApiError
 from ..schemas import Create3DJobRequest, Create3DJobResponse, JobResponse, JobResult, JobStatus
-from ..services.blender_client import BlenderClientError
 from ..services.jobs import run_3d_job
 
 router = APIRouter()
@@ -90,38 +89,18 @@ async def get_3d_model_usdz(request: Request, job_id: str) -> Response:
     if job.model_path is None or not job.model_path.exists():
         raise ApiError(404, "model_not_found", "Generated GLB model was not found.")
 
+    # Failure here must never fail the 3D job itself or affect the GLB
+    # endpoint/Android Scene Viewer -- this is a separate, on-demand,
+    # iOS-only conversion. convert_or_raise() caches on the filesystem and
+    # maps a failure to a distinct ApiError code, not a raw 500.
     usdz_path = request.app.state.storage.usdz_path_for_job(job.job_id)
-    if not usdz_path.exists():
-        await _convert_to_usdz(request, job.model_path, usdz_path)
+    await request.app.state.blender_client.convert_or_raise(job.model_path, usdz_path)
 
     return FileResponse(
         usdz_path,
         media_type="model/vnd.usdz+zip",
         filename=f"{job.job_id}.usdz",
     )
-
-
-async def _convert_to_usdz(request: Request, glb_path, usdz_path) -> None:
-    # Failure here must never fail the 3D job itself or affect the GLB
-    # endpoint/Android Scene Viewer -- this is a separate, on-demand,
-    # iOS-only conversion. Errors are surfaced as a distinct ApiError code,
-    # not a raw 500, same spirit as the multiview geometry/textured
-    # `available` split (see routers/multiview.py's _model_job_response).
-    blender = request.app.state.blender_client
-    if not blender.settings.blender_executable:
-        raise ApiError(
-            503,
-            "blender_not_configured",
-            "BLENDER_EXECUTABLE is not configured; USDZ export is unavailable.",
-        )
-    try:
-        await blender.convert_glb_to_usdz(glb_path, usdz_path)
-    except BlenderClientError as exc:
-        raise ApiError(
-            502,
-            "usdz_conversion_failed",
-            "Could not convert this model to USDZ for iOS AR.",
-        ) from exc
 
 
 def _job_response(job) -> JobResponse:

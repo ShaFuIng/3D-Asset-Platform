@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse
 
+from ..errors import ApiError
 from ..schemas import (
     DeleteLibraryAssetResponse,
     LibraryAssetListResponse,
@@ -71,6 +72,27 @@ async def get_library_asset_content(request: Request, asset_id: str) -> FileResp
     asset = require_asset(request.app.state.asset_catalog, asset_id)
     path = asset_content_path(request.app.state.asset_catalog, asset)
     return FileResponse(path, media_type=asset.media_type, filename=asset.filename)
+
+
+@router.get("/api/library/assets/{asset_id}/usdz")
+async def get_library_asset_usdz(request: Request, asset_id: str) -> FileResponse:
+    # Asset-based, not job-based, on purpose: Library assets live in
+    # assets.db (persists across backend restarts), unlike the in-memory
+    # Job/MultiviewJob stores that jobs_3d.py and multiview.py's /usdz
+    # endpoints depend on. Going through the GLB already stored for this
+    # asset means Library's AR support doesn't care whether the original
+    # generation job is still around.
+    asset = require_asset(request.app.state.asset_catalog, asset_id)
+    if asset.asset_type != "model":
+        raise ApiError(400, "invalid_asset_type", "USDZ conversion is only available for model assets.")
+    glb_path = asset_content_path(request.app.state.asset_catalog, asset)
+    usdz_path = glb_path.with_suffix(".usdz")
+    await request.app.state.blender_client.convert_or_raise(glb_path, usdz_path)
+    return FileResponse(
+        usdz_path,
+        media_type="model/vnd.usdz+zip",
+        filename=f"{asset.asset_id}.usdz",
+    )
 
 
 @router.post("/api/library/assets/{asset_id}/trash", response_model=LibraryAssetResponse)

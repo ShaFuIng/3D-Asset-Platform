@@ -19,7 +19,6 @@ from ..schemas import (
     RegenerateStrategy,
     SetMultiviewCandidateRequest,
 )
-from ..services.blender_client import BlenderClientError
 from ..services.multiview_jobs import (
     MultiviewJob,
     run_multiview_image_job,
@@ -280,37 +279,19 @@ async def get_multiview_model_usdz(request: Request, job_id: str, kind: str) -> 
         raise ApiError(404, "model_not_found", "Generated GLB model was not found.")
     safe_path = _safe_model_path(request.app.state.storage.models_dir, path)
 
+    # Same graceful-degradation spirit as the geometry/textured `available`
+    # split in _model_job_response: a failed conversion is a distinct
+    # ApiError, not a raw 500, and never touches the model job's own status
+    # or the GLB endpoint/Android Scene Viewer path. convert_or_raise()
+    # also handles the on-disk cache check.
     usdz_path = safe_path.with_suffix(".usdz")
-    if not usdz_path.exists():
-        await _convert_to_usdz(request, safe_path, usdz_path)
+    await request.app.state.blender_client.convert_or_raise(safe_path, usdz_path)
 
     return FileResponse(
         usdz_path,
         media_type="model/vnd.usdz+zip",
         filename=f"{job_id}-{kind}.usdz",
     )
-
-
-async def _convert_to_usdz(request: Request, glb_path: Path, usdz_path: Path) -> None:
-    # Same graceful-degradation spirit as the geometry/textured `available`
-    # split in _model_job_response: a failed conversion is a distinct
-    # ApiError, not a raw 500, and never touches the model job's own
-    # status or the GLB endpoint/Android Scene Viewer path.
-    blender = request.app.state.blender_client
-    if not blender.settings.blender_executable:
-        raise ApiError(
-            503,
-            "blender_not_configured",
-            "BLENDER_EXECUTABLE is not configured; USDZ export is unavailable.",
-        )
-    try:
-        await blender.convert_glb_to_usdz(glb_path, usdz_path)
-    except BlenderClientError as exc:
-        raise ApiError(
-            502,
-            "usdz_conversion_failed",
-            "Could not convert this model to USDZ for iOS AR.",
-        ) from exc
 
 
 async def _get_job(request: Request, job_id: str) -> MultiviewJob:

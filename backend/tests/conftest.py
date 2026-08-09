@@ -119,6 +119,30 @@ class FakeBlenderClient:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(USDZ_BYTES)
 
+    async def convert_or_raise(self, glb_path: Path, destination: Path) -> None:
+        # Mirrors BlenderClient.convert_or_raise's cache check + ApiError
+        # mapping, same way FakeComfyClient re-implements ensure_available()
+        # instead of importing the real class.
+        from app.errors import ApiError
+        from app.services.blender_client import BlenderClientError
+
+        if destination.exists():
+            return
+        if not self.settings.blender_executable:
+            raise ApiError(
+                503,
+                "blender_not_configured",
+                "BLENDER_EXECUTABLE is not configured; USDZ export is unavailable.",
+            )
+        try:
+            await self.convert_glb_to_usdz(glb_path, destination)
+        except BlenderClientError as exc:
+            raise ApiError(
+                502,
+                "usdz_conversion_failed",
+                "Could not convert this model to USDZ for iOS AR.",
+            ) from exc
+
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
