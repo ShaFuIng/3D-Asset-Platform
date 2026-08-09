@@ -19,6 +19,7 @@ from ..schemas import (
     RegenerateStrategy,
     SetMultiviewCandidateRequest,
 )
+from ..services.blender_client import BlenderClientError
 from ..services.multiview_jobs import (
     MultiviewJob,
     run_multiview_image_job,
@@ -261,6 +262,55 @@ async def get_multiview_model(request: Request, job_id: str, kind: str) -> Respo
         media_type="model/gltf-binary",
         filename=f"{job_id}-{kind}.glb",
     )
+
+
+@router.get("/api/multiview/jobs/{job_id}/models/{kind}/usdz")
+async def get_multiview_model_usdz(request: Request, job_id: str, kind: str) -> Response:
+    if kind not in {"geometry", "textured"}:
+        raise ApiError(400, "invalid_model_kind", "Model kind must be geometry or textured.")
+    job = await _get_job(request, job_id)
+    if job.model_job is None:
+        raise ApiError(404, "model_job_not_found", "Multiview model job was not found.")
+    if job.model_job.status in {JobStatus.queued, JobStatus.running}:
+        raise ApiError(409, "job_not_complete", "Multiview 3D generation job is not complete.")
+    if job.model_job.status == JobStatus.failed:
+        raise ApiError(409, "job_failed", "Multiview 3D generation job failed.")
+    path = job.model_job.geometry_path if kind == "geometry" else job.model_job.textured_path
+    if path is None:
+        raise ApiError(404, "model_not_found", "Generated GLB model was not found.")
+    safe_path = _safe_model_path(request.app.state.storage.models_dir, path)
+
+    usdz_path = safe_path.with_suffix(".usdz")
+    if not usdz_path.exists():
+        await _convert_to_usdz(request, safe_path, usdz_path)
+
+    return FileResponse(
+        usdz_path,
+        media_type="model/vnd.usdz+zip",
+        filename=f"{job_id}-{kind}.usdz",
+    )
+
+
+async def _convert_to_usdz(request: Request, glb_path: Path, usdz_path: Path) -> None:
+    # Same graceful-degradation spirit as the geometry/textured `available`
+    # split in _model_job_response: a failed conversion is a distinct
+    # ApiError, not a raw 500, and never touches the model job's own
+    # status or the GLB endpoint/Android Scene Viewer path.
+    blender = request.app.state.blender_client
+    if not blender.settings.blender_executable:
+        raise ApiError(
+            503,
+            "blender_not_configured",
+            "BLENDER_EXECUTABLE is not configured; USDZ export is unavailable.",
+        )
+    try:
+        await blender.convert_glb_to_usdz(glb_path, usdz_path)
+    except BlenderClientError as exc:
+        raise ApiError(
+            502,
+            "usdz_conversion_failed",
+            "Could not convert this model to USDZ for iOS AR.",
+        ) from exc
 
 
 async def _get_job(request: Request, job_id: str) -> MultiviewJob:

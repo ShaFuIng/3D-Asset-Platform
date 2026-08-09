@@ -186,6 +186,9 @@ class AssetStorage:
     def model_path_for_job(self, job_id: str) -> Path:
         return self.models_dir / f"{job_id}.glb"
 
+    def usdz_path_for_job(self, job_id: str) -> Path:
+        return self.models_dir / f"{job_id}.usdz"
+
     def _resolve_child(self, root: Path, filename: str) -> Path:
         if Path(filename).name != filename:
             raise ApiError(400, "invalid_path", "Invalid file path.")

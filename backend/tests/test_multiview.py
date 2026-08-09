@@ -13,7 +13,7 @@ from app.services.multiview_jobs import (
     run_multiview_view_regeneration_job,
 )
 from app.services.multiview_workflows import HunyuanMultiviewWorkflow, QwenMultiviewWorkflow
-from tests.conftest import FakeOpenAIClient, GLB_BYTES, PNG_BYTES
+from tests.conftest import FakeBlenderClient, FakeOpenAIClient, GLB_BYTES, PNG_BYTES
 
 
 def qwen_template() -> dict:
@@ -280,6 +280,97 @@ def test_multiview_model_download_rejects_path_escape(client: TestClient, image_
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_path"
+
+
+def _prepare_multiview_model_job(client: TestClient, image_id: str) -> str:
+    prepare_multiview_app(client)
+
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "local")
+        records = {
+            view: client.app.state.storage.save_image_bytes(PNG_BYTES, view, ".png")
+            for view in ("front", "left", "back")
+        }
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        for view in ("front", "left", "back"):
+            await client.app.state.multiview_job_store.accept_view(job.job_id, view)
+        await client.app.state.multiview_job_store.start_model_job(job.job_id)
+        geometry = client.app.state.storage.models_dir / f"{job.job_id}-geometry.glb"
+        textured = client.app.state.storage.models_dir / f"{job.job_id}-textured.glb"
+        geometry.write_bytes(GLB_BYTES)
+        textured.write_bytes(GLB_BYTES)
+        await client.app.state.multiview_job_store.update_model_job(
+            job.job_id,
+            status=JobStatus.succeeded,
+            geometry_path=geometry,
+            textured_path=textured,
+        )
+        return job.job_id
+
+    return asyncio.run(prepare())
+
+
+def test_multiview_model_usdz_converts_once_per_kind_and_caches(
+    client: TestClient, image_id: str
+) -> None:
+    job_id = _prepare_multiview_model_job(client, image_id)
+    blender = client.app.state.blender_client
+    assert isinstance(blender, FakeBlenderClient)
+
+    geometry_first = client.get(f"/api/multiview/jobs/{job_id}/models/geometry/usdz")
+    geometry_second = client.get(f"/api/multiview/jobs/{job_id}/models/geometry/usdz")
+    textured_first = client.get(f"/api/multiview/jobs/{job_id}/models/textured/usdz")
+
+    assert geometry_first.status_code == 200
+    assert geometry_first.headers["content-type"].startswith("model/vnd.usdz+zip")
+    assert geometry_second.status_code == 200
+    assert geometry_second.content == geometry_first.content
+    assert textured_first.status_code == 200
+    # geometry converted once (cached on the 2nd hit), textured converted
+    # once -- two calls total, not three.
+    assert len(blender.calls) == 2
+
+
+def test_multiview_model_usdz_invalid_kind_returns_400(client: TestClient, image_id: str) -> None:
+    job_id = _prepare_multiview_model_job(client, image_id)
+
+    response = client.get(f"/api/multiview/jobs/{job_id}/models/side/usdz")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_model_kind"
+
+
+def test_multiview_model_usdz_without_blender_configured_returns_503(
+    client: TestClient, image_id: str
+) -> None:
+    job_id = _prepare_multiview_model_job(client, image_id)
+    client.app.state.blender_client = FakeBlenderClient(configured=False)
+
+    response = client.get(f"/api/multiview/jobs/{job_id}/models/geometry/usdz")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "blender_not_configured"
+
+
+def test_multiview_model_usdz_conversion_failure_returns_502_without_failing_job(
+    client: TestClient, image_id: str
+) -> None:
+    from app.services.blender_client import BlenderClientError
+
+    job_id = _prepare_multiview_model_job(client, image_id)
+    client.app.state.blender_client = FakeBlenderClient(
+        error=BlenderClientError("Blender GLB to USDZ conversion failed: boom")
+    )
+
+    usdz_response = client.get(f"/api/multiview/jobs/{job_id}/models/textured/usdz")
+    glb_response = client.get(f"/api/multiview/jobs/{job_id}/models/textured")
+
+    assert usdz_response.status_code == 502
+    assert usdz_response.json()["error"]["code"] == "usdz_conversion_failed"
+    # A failed USDZ conversion must not affect the GLB download path.
+    assert glb_response.status_code == 200
+    assert glb_response.content == GLB_BYTES
 
 
 class FakeMultiviewComfy:

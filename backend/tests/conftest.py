@@ -1,6 +1,7 @@
 import base64
 import struct
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +16,7 @@ PNG_BYTES = base64.b64decode(
     "WjR9awAAAABJRU5ErkJggg=="
 )
 GLB_BYTES = b"glTF" + struct.pack("<II", 2, 12)
+USDZ_BYTES = b"PK\x03\x04" + b"\x00" * 16
 
 
 class FakeOpenAIClient:
@@ -102,6 +104,22 @@ class FakeComfyClient:
         return ComfyClient(self.settings).parse_glb_output(output)
 
 
+class FakeBlenderClient:
+    def __init__(self, *, configured: bool = True, error: Exception | None = None) -> None:
+        self.settings = SimpleNamespace(
+            blender_executable="/opt/blender/blender" if configured else None
+        )
+        self.error = error
+        self.calls: list[tuple[Path, Path]] = []
+
+    async def convert_glb_to_usdz(self, glb_path: Path, destination: Path) -> None:
+        self.calls.append((glb_path, destination))
+        if self.error:
+            raise self.error
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(USDZ_BYTES)
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(
@@ -117,6 +135,7 @@ def settings(tmp_path) -> Settings:
         max_upload_bytes=1024,
         comfyui_job_timeout_seconds=0.01,
         comfyui_poll_interval_seconds=0.001,
+        blender_glb_to_usdz_script_path=tmp_path / "blender_scripts" / "glb_to_usdz.py",
     )
 
 
@@ -125,6 +144,7 @@ def client(settings: Settings) -> TestClient:
     app = create_app(settings)
     app.state.openai_client = FakeOpenAIClient()
     app.state.comfy_client = FakeComfyClient()
+    app.state.blender_client = FakeBlenderClient()
     app.state.disable_background_jobs = True
     return TestClient(app)
 

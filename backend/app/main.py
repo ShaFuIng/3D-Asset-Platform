@@ -6,6 +6,7 @@ from .asset_usage import AssetUsageGuard
 from .config import Settings, settings
 from .errors import register_error_handlers
 from .routers import images, jobs_3d, library, multiview
+from .services.blender_client import BlenderClient
 from .services.comfy_client import ComfyClient, ComfyClientError
 from .services.jobs import JobStore
 from .services.multiview_jobs import MultiviewJobStore
@@ -25,6 +26,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     app.state.multiview_job_store = MultiviewJobStore()
     app.state.background_tasks = set()
     app.state.comfy_client = ComfyClient(app_settings)
+    app.state.blender_client = BlenderClient(app_settings)
     app.state.qwen_multiview_workflow = QwenMultiviewWorkflow(
         app_settings.qwen_multiview_workflow_path
     )

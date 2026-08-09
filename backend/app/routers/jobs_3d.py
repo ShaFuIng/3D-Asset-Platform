@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 
 from ..errors import ApiError
 from ..schemas import Create3DJobRequest, Create3DJobResponse, JobResponse, JobResult, JobStatus
+from ..services.blender_client import BlenderClientError
 from ..services.jobs import run_3d_job
 
 router = APIRouter()
@@ -75,6 +76,52 @@ async def get_3d_model(request: Request, job_id: str) -> Response:
         media_type="model/gltf-binary",
         filename=f"{job.job_id}.glb",
     )
+
+
+@router.get("/api/3d/jobs/{job_id}/usdz")
+async def get_3d_model_usdz(request: Request, job_id: str) -> Response:
+    job = await request.app.state.job_store.get(job_id)
+    if job is None:
+        raise ApiError(404, "job_not_found", "3D generation job was not found.")
+    if job.status in {JobStatus.queued, JobStatus.running}:
+        raise ApiError(409, "job_not_complete", "3D generation job is not complete.")
+    if job.status == JobStatus.failed:
+        raise ApiError(409, "job_failed", "3D generation job failed.")
+    if job.model_path is None or not job.model_path.exists():
+        raise ApiError(404, "model_not_found", "Generated GLB model was not found.")
+
+    usdz_path = request.app.state.storage.usdz_path_for_job(job.job_id)
+    if not usdz_path.exists():
+        await _convert_to_usdz(request, job.model_path, usdz_path)
+
+    return FileResponse(
+        usdz_path,
+        media_type="model/vnd.usdz+zip",
+        filename=f"{job.job_id}.usdz",
+    )
+
+
+async def _convert_to_usdz(request: Request, glb_path, usdz_path) -> None:
+    # Failure here must never fail the 3D job itself or affect the GLB
+    # endpoint/Android Scene Viewer -- this is a separate, on-demand,
+    # iOS-only conversion. Errors are surfaced as a distinct ApiError code,
+    # not a raw 500, same spirit as the multiview geometry/textured
+    # `available` split (see routers/multiview.py's _model_job_response).
+    blender = request.app.state.blender_client
+    if not blender.settings.blender_executable:
+        raise ApiError(
+            503,
+            "blender_not_configured",
+            "BLENDER_EXECUTABLE is not configured; USDZ export is unavailable.",
+        )
+    try:
+        await blender.convert_glb_to_usdz(glb_path, usdz_path)
+    except BlenderClientError as exc:
+        raise ApiError(
+            502,
+            "usdz_conversion_failed",
+            "Could not convert this model to USDZ for iOS AR.",
+        ) from exc
 
 
 def _job_response(job) -> JobResponse:

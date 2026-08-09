@@ -8,7 +8,7 @@ from app.errors import ApiError
 from app.schemas import JobStatus
 from app.services.comfy_client import ComfyClient, ComfyClientError
 from app.services.jobs import run_3d_job
-from tests.conftest import FakeComfyClient, GLB_BYTES, make_job
+from tests.conftest import FakeBlenderClient, FakeComfyClient, GLB_BYTES, make_job
 
 
 def test_create_3d_job_success(client: TestClient, image_id: str) -> None:
@@ -118,6 +118,87 @@ def test_unfinished_job_model_returns_409(client: TestClient) -> None:
     response = client.get(f"/api/3d/jobs/{job_id}/model")
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "job_not_complete"
+
+
+def _prepare_succeeded_job(client: TestClient, tmp_path) -> str:
+    async def prepare():
+        job = await client.app.state.job_store.create()
+        model_path = tmp_path / f"{job.job_id}.glb"
+        model_path.write_bytes(GLB_BYTES)
+        await client.app.state.job_store.update(
+            job.job_id,
+            status=JobStatus.succeeded,
+            message="3D model generation completed.",
+            model_path=model_path,
+        )
+        return job.job_id
+
+    return asyncio.run(prepare())
+
+
+def test_completed_job_usdz_converts_once_and_caches(client: TestClient, tmp_path) -> None:
+    job_id = _prepare_succeeded_job(client, tmp_path)
+    blender = client.app.state.blender_client
+    assert isinstance(blender, FakeBlenderClient)
+
+    first_response = client.get(f"/api/3d/jobs/{job_id}/usdz")
+    second_response = client.get(f"/api/3d/jobs/{job_id}/usdz")
+
+    assert first_response.status_code == 200
+    assert first_response.headers["content-type"].startswith("model/vnd.usdz+zip")
+    assert first_response.content == second_response.content
+    assert second_response.status_code == 200
+    # Converted exactly once -- the second request must be served from the
+    # cached file on disk, not trigger another Blender run.
+    assert len(blender.calls) == 1
+
+
+def test_unfinished_job_usdz_returns_409(client: TestClient) -> None:
+    async def prepare():
+        job = await client.app.state.job_store.create()
+        await client.app.state.job_store.update(job.job_id, status=JobStatus.running)
+        return job.job_id
+
+    job_id = asyncio.run(prepare())
+    response = client.get(f"/api/3d/jobs/{job_id}/usdz")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "job_not_complete"
+
+
+def test_completed_job_usdz_without_blender_configured_returns_503(
+    client: TestClient, tmp_path
+) -> None:
+    job_id = _prepare_succeeded_job(client, tmp_path)
+    client.app.state.blender_client = FakeBlenderClient(configured=False)
+
+    response = client.get(f"/api/3d/jobs/{job_id}/usdz")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "blender_not_configured"
+
+
+def test_completed_job_usdz_conversion_failure_returns_502_without_failing_job(
+    client: TestClient, tmp_path
+) -> None:
+    from app.services.blender_client import BlenderClientError
+
+    job_id = _prepare_succeeded_job(client, tmp_path)
+    client.app.state.blender_client = FakeBlenderClient(
+        error=BlenderClientError("Blender GLB to USDZ conversion failed: boom")
+    )
+
+    usdz_response = client.get(f"/api/3d/jobs/{job_id}/usdz")
+    job_response = client.get(f"/api/3d/jobs/{job_id}")
+    model_response = client.get(f"/api/3d/jobs/{job_id}/model")
+
+    assert usdz_response.status_code == 502
+    assert usdz_response.json()["error"]["code"] == "usdz_conversion_failed"
+    # A failed USDZ conversion must not touch the job itself or the GLB
+    # download / Android Scene Viewer path.
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "succeeded"
+    assert model_response.status_code == 200
+    assert model_response.content == GLB_BYTES
 
 
 def test_workflow_node_2_replacement(settings) -> None:

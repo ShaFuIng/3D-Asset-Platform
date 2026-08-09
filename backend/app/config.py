@@ -23,6 +23,12 @@ class Settings:
     max_upload_bytes: int
     comfyui_job_timeout_seconds: float
     comfyui_poll_interval_seconds: float
+    blender_glb_to_usdz_script_path: Path
+    # BLENDER_EXECUTABLE points at the extracted tarball's binary (e.g.
+    # ~/.local/opt/blender/blender via a version symlink), not a Flatpak
+    # install -- see docs/development-log/kila606/2026-08-08-blender-usdz-conversion.md.
+    blender_executable: str | None = None
+    blender_conversion_timeout_seconds: float = 300.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,6 +48,11 @@ class Settings:
             max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(8 * 1024 * 1024))),
             comfyui_job_timeout_seconds=float(os.getenv("COMFYUI_JOB_TIMEOUT_SECONDS", "900")),
             comfyui_poll_interval_seconds=float(os.getenv("COMFYUI_POLL_INTERVAL_SECONDS", "2")),
+            blender_glb_to_usdz_script_path=root / "blender_scripts" / "glb_to_usdz.py",
+            blender_executable=os.getenv("BLENDER_EXECUTABLE") or None,
+            blender_conversion_timeout_seconds=float(
+                os.getenv("BLENDER_CONVERSION_TIMEOUT_SECONDS", "300")
+            ),
         )
 
 
