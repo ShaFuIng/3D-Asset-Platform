@@ -45,6 +45,10 @@ export function ViewerStagePage() {
 
   if (routed.pipeline === 'single') {
     const modelUrl = routed.entry.modelUrl;
+    // Backend converts + caches USDZ on first hit (see blender_client.py);
+    // ModelViewer only fetches this when the user actually clicks "在 AR
+    // 中檢視" on iOS.
+    const usdzUrl = modelUrl ? resolveApiUrl(`/api/3d/jobs/${jobId}/usdz`) : undefined;
     return (
       <StageShell
         current="inspect"
@@ -61,7 +65,7 @@ export function ViewerStagePage() {
             </span>
           </div>
           <div className="model-preview">
-            <ModelViewer src={modelUrl} />
+            <ModelViewer src={modelUrl} usdzUrl={usdzUrl} />
           </div>
           <div className="model-downloads">
             {modelUrl ? (
@@ -89,6 +93,12 @@ export function ViewerStagePage() {
   const activeModelKind = workspace.activeModelKind;
   const activeModelUrl =
     activeModelKind === 'textured' ? texturedUrl || geometryUrl : geometryUrl || texturedUrl;
+  // Mirrors the single-pipeline usdzUrl above, but keyed to whichever kind
+  // (geometry/textured) is currently selected -- see
+  // GET /api/multiview/jobs/{job_id}/models/{kind}/usdz.
+  const usdzUrl = activeModelUrl
+    ? resolveApiUrl(`/api/multiview/jobs/${jobId}/models/${activeModelKind}/usdz`)
+    : undefined;
 
   return (
     <StageShell

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+// Registers the <model-viewer> custom element used by the "View in AR" panel below.
+import '@google/model-viewer';
 
 /*
  * Multi-directional lighting and inspection modes are adapted from
@@ -11,7 +13,32 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 type ModelViewerProps = {
   src?: string;
+  /**
+   * Endpoint that serves this model's USDZ for iOS AR Quick Look, e.g.
+   * `GET /api/3d/jobs/{job_id}/usdz` or
+   * `GET /api/multiview/jobs/{job_id}/models/{kind}/usdz`. The backend
+   * converts + caches on first hit (see blender_client.py), so this is
+   * safe to fetch on every "在 AR 中檢視" click. Optional — without it,
+   * iOS AR Quick Look stays unavailable and only Android Scene Viewer
+   * (which only needs `src`) works.
+   */
+  usdzUrl?: string;
 };
+
+// model-viewer's element type isn't exported in a way our JSX declaration
+// can reuse directly; this is just enough to call the one imperative method
+// we need.
+type ModelViewerElement = HTMLElement & { activateAR: () => Promise<void> };
+
+function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const isClassicIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  // iPadOS 13+ reports as "MacIntel" in the UA; touch support is the tell.
+  const isModernIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return isClassicIOS || isModernIPad;
+}
 
 type MaterialMode = 'original' | 'clay' | 'normal' | 'wireframe';
 
@@ -37,16 +64,32 @@ const EMPTY_STATS: ModelStats = {
   triangles: 0,
 };
 
-export function ModelViewer({ src }: ModelViewerProps) {
+export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ViewerRuntime | null>(null);
   const materialModeRef = useRef<MaterialMode>('original');
+  const arModelViewerRef = useRef<HTMLElement | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(src));
   const [error, setError] = useState<string | null>(null);
   const [materialMode, setMaterialMode] = useState<MaterialMode>('original');
   const [showGrid, setShowGrid] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
   const [stats, setStats] = useState<ModelStats>(EMPTY_STATS);
+  // Level 1 real-AR panel (native <model-viewer> AR, separate from the
+  // shader-based AR Preview on kila606/ar-preview-demo). Off by default so
+  // the extra <model-viewer> element only mounts when actually requested.
+  const [arOpen, setArOpen] = useState(false);
+  // Hunyuan3D GLBs are normalized (no real-world scale), so AR placement is
+  // often the wrong size. This is a manual fudge factor for now, not a real
+  // fix — see model-viewer's `scale` attribute below.
+  const [arScale, setArScale] = useState(1);
+  // iOS Quick Look needs a USDZ, which the backend only converts on demand
+  // (see `usdzUrl` above). `resolvedIosSrc` is set once that fetch
+  // succeeds, so re-clicking within the same session skips straight to
+  // activateAR() instead of hitting the endpoint again.
+  const [resolvedIosSrc, setResolvedIosSrc] = useState<string | null>(null);
+  const [iosUsdzState, setIosUsdzState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [iosUsdzErrorMessage, setIosUsdzErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     materialModeRef.current = materialMode;
@@ -199,6 +242,53 @@ export function ModelViewer({ src }: ModelViewerProps) {
     };
   }, [src]);
 
+  async function handleArButtonClick() {
+    const modelViewer = arModelViewerRef.current as ModelViewerElement | null;
+    if (!modelViewer) {
+      return;
+    }
+
+    // Android Scene Viewer only needs `src`, already set on the element —
+    // launch immediately, no conversion involved.
+    if (!isIOSDevice() || resolvedIosSrc) {
+      modelViewer.activateAR().catch(() => {});
+      return;
+    }
+
+    if (!usdzUrl) {
+      setIosUsdzState('error');
+      setIosUsdzErrorMessage('此模型尚未支援 iOS AR（缺少 USDZ 轉檔來源）。');
+      return;
+    }
+
+    setIosUsdzState('loading');
+    setIosUsdzErrorMessage(null);
+    try {
+      const response = await fetch(usdzUrl);
+      if (!response.ok) {
+        let message = `USDZ 轉檔失敗（HTTP ${response.status}）。`;
+        try {
+          const body = await response.json();
+          if (body?.error?.message) {
+            message = body.error.message as string;
+          }
+        } catch {
+          // Response body wasn't JSON; keep the generic message above.
+        }
+        throw new Error(message);
+      }
+      // Set the attribute directly first -- React re-render is async, but
+      // activateAR() below needs ios-src on the element right now.
+      modelViewer.setAttribute('ios-src', usdzUrl);
+      setResolvedIosSrc(usdzUrl);
+      setIosUsdzState('idle');
+      await modelViewer.activateAR();
+    } catch (err) {
+      setIosUsdzState('error');
+      setIosUsdzErrorMessage(err instanceof Error ? err.message : 'USDZ 轉檔失敗，請稍後再試。');
+    }
+  }
+
   if (!src) {
     return (
       <div className="viewer-placeholder">
@@ -208,37 +298,85 @@ export function ModelViewer({ src }: ModelViewerProps) {
   }
 
   return (
-    <div className="viewer-shell">
-      <div className="viewer-toolbar" aria-label="3D model inspection controls">
-        <label>
-          顯示模式
-          <select
-            value={materialMode}
-            onChange={(event) => setMaterialMode(event.target.value as MaterialMode)}
-          >
-            <option value="original">Original</option>
-            <option value="clay">Clay</option>
-            <option value="normal">Normal</option>
-            <option value="wireframe">Wireframe</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => setShowGrid((current) => !current)}>
-          {showGrid ? '隱藏格線' : '顯示格線'}
-        </button>
-        <button type="button" onClick={() => setAutoRotate((current) => !current)}>
-          {autoRotate ? '停止旋轉' : '自動旋轉'}
-        </button>
-        <button type="button" onClick={() => runtimeRef.current?.resetView?.()}>
-          重設視角
-        </button>
+    <div className="viewer-root">
+      <div className="viewer-shell">
+        <div className="viewer-toolbar" aria-label="3D model inspection controls">
+          <label>
+            顯示模式
+            <select
+              value={materialMode}
+              onChange={(event) => setMaterialMode(event.target.value as MaterialMode)}
+            >
+              <option value="original">Original</option>
+              <option value="clay">Clay</option>
+              <option value="normal">Normal</option>
+              <option value="wireframe">Wireframe</option>
+            </select>
+          </label>
+          <button type="button" onClick={() => setShowGrid((current) => !current)}>
+            {showGrid ? '隱藏格線' : '顯示格線'}
+          </button>
+          <button type="button" onClick={() => setAutoRotate((current) => !current)}>
+            {autoRotate ? '停止旋轉' : '自動旋轉'}
+          </button>
+          <button type="button" onClick={() => runtimeRef.current?.resetView?.()}>
+            重設視角
+          </button>
+        </div>
+        <div className="viewer-stats" aria-live="polite">
+          Meshes {stats.meshes.toLocaleString()} · Vertices {stats.vertices.toLocaleString()} ·
+          Triangles {stats.triangles.toLocaleString()}
+        </div>
+        {isLoading && <div className="viewer-overlay">Loading model...</div>}
+        {error && <div className="viewer-error">{error}</div>}
+        <div ref={containerRef} className="three-canvas" aria-label="Generated 3D asset preview" />
       </div>
-      <div className="viewer-stats" aria-live="polite">
-        Meshes {stats.meshes.toLocaleString()} · Vertices {stats.vertices.toLocaleString()} ·
-        Triangles {stats.triangles.toLocaleString()}
+      <div className="viewer-ar-panel" aria-label="Real-device AR preview (native model-viewer)">
+        <button type="button" onClick={() => setArOpen((current) => !current)}>
+          {arOpen ? '關閉 AR 檢視' : '在 AR 中檢視'}
+        </button>
+        {arOpen && (
+          <label className="viewer-ar-scale">
+            AR 縮放（暫時手動調整，Hunyuan3D 模型無真實尺度）
+            <input
+              type="number"
+              step="0.1"
+              min="0.01"
+              value={arScale}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setArScale(Number.isFinite(next) && next > 0 ? next : 1);
+              }}
+            />
+          </label>
+        )}
+        {arOpen && (
+          <>
+            <model-viewer
+              ref={arModelViewerRef}
+              className="viewer-ar-frame"
+              src={src}
+              ios-src={resolvedIosSrc ?? undefined}
+              ar
+              ar-modes="scene-viewer quick-look"
+              camera-controls
+              scale={`${arScale} ${arScale} ${arScale}`}
+              alt="Generated 3D asset in AR"
+            />
+            <button
+              type="button"
+              className="viewer-ar-button"
+              disabled={iosUsdzState === 'loading'}
+              onClick={handleArButtonClick}
+            >
+              {iosUsdzState === 'loading' ? 'USDZ 轉檔中...' : '在 AR 中檢視'}
+            </button>
+            {iosUsdzState === 'error' && iosUsdzErrorMessage && (
+              <p className="hint error">{iosUsdzErrorMessage}</p>
+            )}
+          </>
+        )}
       </div>
-      {isLoading && <div className="viewer-overlay">Loading model...</div>}
-      {error && <div className="viewer-error">{error}</div>}
-      <div ref={containerRef} className="three-canvas" aria-label="Generated 3D asset preview" />
     </div>
   );
 }
