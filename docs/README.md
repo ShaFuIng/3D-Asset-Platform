@@ -3,6 +3,9 @@
 本文件是 `3D-Asset-Platform` 的主要技術文件入口。新加入的組員或接手
 專案的 AI，應先閱讀本頁，再依負責範圍查看對應的開發紀錄。
 
+> 注意：目前 `kila606/ar-model-viewer` 分支比 `main` 多出 AR / USDZ / Tailscale Serve 相關功能提交。
+> 若要部署最新 AR 功能，請先確認所在分支，不要把 `main` 當成已包含這些功能。
+
 ## 文件導航
 
 | 文件 | 用途 |
@@ -11,10 +14,11 @@
 | [AGENTS.md](../AGENTS.md) | 開發限制與協作規則 |
 | [開發紀錄說明](./development-log/README.md) | 紀錄命名、撰寫時機與格式 |
 | [Shafuing 開發紀錄](./development-log/shafuing/README.md) | 圖片、3D、Multiview、Asset Library 與交接狀態 |
+| [kila606 開發紀錄](./development-log/kila606/README.md) | AR Viewer、USDZ、Android / iOS 與 Tailscale Serve |
 
 ## 目前階段
 
-目前已完成可操作的單圖與多視角 3D MVP：
+目前已完成可操作的單圖與多視角 3D MVP，最新 AR 分支另包含：
 
 - Vite + React + TypeScript 分階段前端
 - OpenAI 圖片生成、指定圖片修改與 Multiview GPT Edit
@@ -26,7 +30,11 @@
 - SQLite Asset Catalog 與 Asset Library
 - 圖片／模型搜尋、篩選、預覽、下載、Trash、Restore、Permanent Delete
 - Three.js Original／Clay／Normal／Wireframe 模型檢查
-- Grid／Axes、模型統計、相機重設與無陰影多方向補光
+- `@google/model-viewer` Web AR Viewer
+- Android Google Scene Viewer AR 路徑
+- iOS Quick Look / USDZ 路徑
+- Blender headless GLB → USDZ 轉換服務
+- Tailscale Serve HTTPS 真機測試路徑
 - Game UI 第一版、首頁三區布局、orbital workspace 入口與統一五階段導覽
 
 目前尚未完成：
@@ -36,6 +44,8 @@
 - 多 worker 共用狀態與正式任務佇列
 - 完整逐頁 UI QA、RWD 細節與正式視覺 polish
 - 正式環境的長時間生成與部署驗證
+- Android Scene Viewer 完整模型放置仍需持續真機驗證
+- iOS Quick Look / USDZ 仍需實機完整驗證
 
 ## 環境與版本
 
@@ -47,6 +57,8 @@
 | npm | 使用 Node.js 隨附版本，並由 `package-lock.json` 鎖定依賴 |
 | Python | 已驗證 Python `3.10.11`；開發者亦可依目前 requirements 建立相容環境 |
 | ComfyUI | 本機 API 預設為 `http://127.0.0.1:8188` |
+| Blender | AR 分支的 iOS USDZ 轉換需要可執行 Blender headless |
+| Tailscale | 僅開發／真機測試需要；用於 Tailnet HTTPS 存取 |
 
 ### 前端主要套件
 
@@ -58,10 +70,14 @@
 | React | `^19.1.0` |
 | React DOM | `^19.1.0` |
 | React Router DOM | `^7.18.2` |
-| Three.js | `^0.185.1` |
+| Three.js | `0.183.2`（精確鎖定） |
+| `@google/model-viewer` | `^4.3.1` |
 | TypeScript | `^5.8.3` |
 | Vite | `^8.1.5` |
 | `@vitejs/plugin-react` | `^6.0.4` |
+
+`three@0.183.2` 是為了符合目前 `@google/model-viewer@4.3.1` 的 peer dependency，
+不要自行升回 `0.185.x` 後直接提交；若要升級，需重新驗證 npm 相依與 AR Viewer。
 
 ### 後端主要套件
 
@@ -91,6 +107,13 @@ git clone https://github.com/ShaFuIng/3D-Asset-Platform.git
 cd 3D-Asset-Platform
 ```
 
+若要使用目前尚未合併到 `main` 的 AR 功能：
+
+```powershell
+git fetch origin
+git checkout kila606/ar-model-viewer
+```
+
 ### 2. 建立本機環境設定
 
 ```powershell
@@ -101,6 +124,7 @@ Copy-Item .env.example .env
 
 ```dotenv
 VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_ALLOWED_HOSTS=
 COMFYUI_BASE_URL=http://127.0.0.1:8188
 OPENAI_API_KEY=
 OPENAI_RESPONSE_MODEL=gpt-5.6
@@ -110,6 +134,7 @@ OPENAI_RESPONSE_MODEL=gpt-5.6
 - `OPENAI_API_KEY` 只能放在後端環境，不可寫入前端。
 - FastAPI 會讀取根目錄 `.env`。
 - `frontend/vite.config.ts` 使用根目錄環境設定。
+- `VITE_ALLOWED_HOSTS` 用於 Tailscale Serve 或其他開發 HTTPS reverse proxy 的 Host。
 
 ### 3. 安裝前端
 
@@ -120,7 +145,8 @@ cd ..
 ```
 
 團隊安裝建議使用 `npm ci`，確保依照 `package-lock.json` 安裝相同版本。
-只有需要更新依賴時才使用 `npm install`。
+目前 AR 分支已修正 model-viewer / Three.js 相依，不應需要 `--force` 或
+`--legacy-peer-deps`。
 
 ### 4. 安裝後端
 
@@ -140,14 +166,21 @@ cd ..
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
+### 5. Blender（只有 USDZ / iOS AR 需要）
+
+Android Scene Viewer 主要使用 GLB，不要求 USDZ。
+iOS Quick Look 則需要後端可呼叫 Blender headless 進行 GLB → USDZ 轉換。
+請確認 Blender 已安裝，並依 `.env.example` / 後端設定提供可執行檔位置（若環境不是預設位置）。
+
 ## 服務與預設 Port
 
 | 服務 | 預設位置 | 用途 |
 |---|---|---|
-| Vite 前端 | `http://127.0.0.1:5173` | 操作介面與 GLB 預覽 |
-| FastAPI 後端 | `http://127.0.0.1:8000` | 前端 API、OpenAI 與 ComfyUI 代理 |
+| Vite 前端 | `http://127.0.0.1:5173` | 操作介面、GLB / AR Viewer |
+| FastAPI 後端 | `http://127.0.0.1:8000` | 前端 API、OpenAI、ComfyUI、USDZ 轉換 |
 | FastAPI 文件 | `http://127.0.0.1:8000/docs` | API 測試介面 |
 | ComfyUI | `http://127.0.0.1:8188` | 執行圖片與 3D Workflow |
+| Tailscale Serve | HTTPS `443` | 開發時讓手機安全連入 Vite |
 
 ## 啟動順序
 
@@ -180,6 +213,42 @@ cd frontend
 npm run dev
 ```
 
+## Tailscale Serve / Android AR 開發測試
+
+這是目前的開發測試方式，不是正式 production deployment。
+
+1. Windows 電腦與 Android 手機加入同一個 Tailnet。
+2. 在根目錄 `.env` 設定自己的 HTTPS Host：
+
+```dotenv
+VITE_API_BASE_URL=
+VITE_ALLOWED_HOSTS=your-device.your-tailnet.ts.net
+```
+
+清空 `VITE_API_BASE_URL` 後，前端使用同源 `/api`，由 Vite proxy 轉送至
+`http://127.0.0.1:8000`，避免手機 HTTPS 頁面直接呼叫本機 HTTP API。
+
+3. 確認 FastAPI、Vite 都已啟動後：
+
+```powershell
+tailscale status
+tailscale serve --bg http://127.0.0.1:5173
+tailscale serve status
+```
+
+4. 在手機 Chrome 開啟 Tailscale Serve 提供的 HTTPS 網址。
+5. 進入具有 AR Viewer 的模型頁面，測試 Google Scene Viewer。
+
+停止 Serve：
+
+```powershell
+tailscale serve --https=443 off
+```
+
+詳細交接請看：
+
+- [Android AR 真機測試與 Tailscale Serve 設定](./development-log/kila606/2026-08-10-android-ar-tailscale-serve.md)
+
 ## 主要 API
 
 ### 健康狀態
@@ -202,7 +271,6 @@ npm run dev
 - 常見可選影片格式包含 MP4、MOV、WebM；實際播放能力取決於使用者瀏覽器與影片 codec。
 - 影片本身只在瀏覽器本機播放，不進入後端，也不會整支上傳。
 - 擷取出的單張影格會以 PNG 圖片沿用 `POST /api/images/upload` 進入 Asset Library。
-- 成功上傳後，可按「設為 Reference 並前往工作區」使用既有 Workspace 狀態選中該圖片，再由使用者明確選擇 Single 或 Multiview 流程。
 
 ### Single 3D Job
 
@@ -230,6 +298,9 @@ npm run dev
 - `POST /api/library/assets/{asset_id}/restore`
 - `DELETE /api/library/assets/{asset_id}`
 
+AR / USDZ 相關 endpoint 以目前 `jobs_3d.py`、`multiview.py` 與 `library.py` 實作為準；
+進行部署或 API 串接前請先查看對應 route，避免只依文件猜 endpoint。
+
 ## 驗證方式
 
 ### 後端測試
@@ -240,11 +311,14 @@ cd backend
 python -m pytest
 ```
 
-2026-08-04 驗證結果：
+2026-08-04 的 main 基線驗證結果：
 
 ```text
 155 passed, 1 skipped
 ```
+
+AR 分支後續已新增 Blender / USDZ / AR 相關測試，部署前請在目標機器重新跑一次完整 pytest，
+不要把上述舊數字視為目前分支的最新測試總數。
 
 ### 前端型別與正式建置
 
@@ -254,19 +328,7 @@ npm run typecheck
 npm run build
 ```
 
-2026-08-05 兩項皆通過。Vite 仍會提示既有 chunk size warning，不影響建置完成。
-
-### 人工驗證
-
-已驗證：
-
-- Single 與 Multiview 完整生成流程
-- 本機單視角重新抽選與 GPT 單視角修改
-- Candidate 接受、歷史版本瀏覽與回復
-- Asset Library Trash／Restore／Permanent Delete
-- Reference、Asset Library 與 Multiview Lightbox 的功能隔離
-- Game UI 導覽規則、Recovery stepper 與 Lightbox Set Candidate 錯誤顯示的程式檢查
-- Video Frame Picker 整合後 `npm run typecheck` 與 `npm run build` 通過；仍需以真實手機影片人工驗證各瀏覽器與 codec 相容性
+2026-08-05 基線兩項皆通過；AR 分支後續修改依賴與 Viewer 後，部署機器仍應重新執行。
 
 ## 停止服務
 
@@ -285,6 +347,7 @@ deactivate
 - `storage/images/`、`storage/models/` 與 `storage/assets.db*` 不提交至 Git。
 - `prototype-reference` 預設只供參考；只有使用者明確要求時才能修改。
 - OpenAI 與 ComfyUI 的長時間生成仍需在部署環境額外驗證。
+- Tailscale Serve 是開發用 HTTPS 存取方案，不代表正式部署架構。
 
 ## 開發紀錄
 
