@@ -100,7 +100,7 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
 
 2026-08-23：
 
-- 文件盤點確認 `main` 與 `kila606/ar-model-viewer` 指向相同提交，AR／USDZ／Tailscale Serve 已在 `main`。
+- 文件盤點確認 `kila606/ar-model-viewer` 的 AR／USDZ／Tailscale Serve 功能已合併至 `main`；後續以 `main` 為準。
 - 本次僅更新文件狀態，未重新執行測試；上述 2026-08-04 與 2026-08-05 數字仍是最近一次有紀錄的完整驗證基線。
 
 ## 專案目錄

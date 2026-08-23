@@ -3,8 +3,8 @@
 本文件是 `3D-Asset-Platform` 的主要技術文件入口。新加入的組員或接手
 專案的 AI，應先閱讀本頁，再依負責範圍查看對應的開發紀錄。
 
-> 狀態基準（2026-08-23）：`main` 與 `kila606/ar-model-viewer` 指向相同提交；
-> AR／USDZ／Tailscale Serve 功能已包含在 `main`，一般開發請直接使用 `main`。
+> 狀態基準（2026-08-23）：`kila606/ar-model-viewer` 的 AR／USDZ／Tailscale Serve
+> 功能已合併至 `main`；該分支僅保留歷史開發用途，一般開發請直接使用 `main`。
 
 ## 文件導航
 
@@ -110,7 +110,7 @@ cd 3D-Asset-Platform
 ```
 
 `main` 已包含目前的 AR／USDZ／Tailscale Serve 功能，不需要另外切換 AR 分支。
-`kila606/ar-model-viewer` 保留為歷史開發分支；截至 2026-08-23 與 `main` 相同。
+`kila606/ar-model-viewer` 僅保留為歷史開發分支，不應作為最新部署狀態的判斷依據。
 
 ### 2. 建立本機環境設定
 
