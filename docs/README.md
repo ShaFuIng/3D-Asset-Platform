@@ -3,8 +3,8 @@
 本文件是 `3D-Asset-Platform` 的主要技術文件入口。新加入的組員或接手
 專案的 AI，應先閱讀本頁，再依負責範圍查看對應的開發紀錄。
 
-> 注意：目前 `kila606/ar-model-viewer` 分支比 `main` 多出 AR / USDZ / Tailscale Serve 相關功能提交。
-> 若要部署最新 AR 功能，請先確認所在分支，不要把 `main` 當成已包含這些功能。
+> 狀態基準（2026-08-23）：`main` 與 `kila606/ar-model-viewer` 指向相同提交；
+> AR／USDZ／Tailscale Serve 功能已包含在 `main`，一般開發請直接使用 `main`。
 
 ## 文件導航
 
@@ -18,7 +18,7 @@
 
 ## 目前階段
 
-目前已完成可操作的單圖與多視角 3D MVP，最新 AR 分支另包含：
+目前 `main` 已完成可操作的單圖與多視角 3D MVP，並包含：
 
 - Vite + React + TypeScript 分階段前端
 - OpenAI 圖片生成、指定圖片修改與 Multiview GPT Edit
@@ -42,6 +42,8 @@
 - Job、Multiview 工作階段與版本歷史的跨重啟持久化
 - Mesh 拆分、材質編輯、拓樸處理與骨架／IK
 - 多 worker 共用狀態與正式任務佇列
+- 模型真實尺寸 metadata、GLB 尺度校正、AR 固定比例與尺寸驗證
+- Depth Anything 場景重建、尺度校正與桌面端虛擬擺放（目前僅為研究方向，未整合進平台）
 - 完整逐頁 UI QA、RWD 細節與正式視覺 polish
 - 正式環境的長時間生成與部署驗證
 - Android Scene Viewer 完整模型放置仍需持續真機驗證
@@ -57,7 +59,7 @@
 | npm | 使用 Node.js 隨附版本，並由 `package-lock.json` 鎖定依賴 |
 | Python | 已驗證 Python `3.10.11`；開發者亦可依目前 requirements 建立相容環境 |
 | ComfyUI | 本機 API 預設為 `http://127.0.0.1:8188` |
-| Blender | AR 分支的 iOS USDZ 轉換需要可執行 Blender headless |
+| Blender | `main` 的 iOS USDZ 轉換需要可執行 Blender headless |
 | Tailscale | 僅開發／真機測試需要；用於 Tailnet HTTPS 存取 |
 
 ### 前端主要套件
@@ -107,12 +109,8 @@ git clone https://github.com/ShaFuIng/3D-Asset-Platform.git
 cd 3D-Asset-Platform
 ```
 
-若要使用目前尚未合併到 `main` 的 AR 功能：
-
-```powershell
-git fetch origin
-git checkout kila606/ar-model-viewer
-```
+`main` 已包含目前的 AR／USDZ／Tailscale Serve 功能，不需要另外切換 AR 分支。
+`kila606/ar-model-viewer` 保留為歷史開發分支；截至 2026-08-23 與 `main` 相同。
 
 ### 2. 建立本機環境設定
 
@@ -145,7 +143,7 @@ cd ..
 ```
 
 團隊安裝建議使用 `npm ci`，確保依照 `package-lock.json` 安裝相同版本。
-目前 AR 分支已修正 model-viewer / Three.js 相依，不應需要 `--force` 或
+目前 `main` 已修正 model-viewer / Three.js 相依，不應需要 `--force` 或
 `--legacy-peer-deps`。
 
 ### 4. 安裝後端
@@ -298,7 +296,8 @@ tailscale serve --https=443 off
 - `POST /api/library/assets/{asset_id}/restore`
 - `DELETE /api/library/assets/{asset_id}`
 
-AR / USDZ 相關 endpoint 以目前 `jobs_3d.py`、`multiview.py` 與 `library.py` 實作為準；
+AR／USDZ 相關 endpoint 以目前 `jobs_3d.py`、`multiview.py` 與 `library.py` 實作為準；
+Depth Anything V2／3 尚無正式 endpoint，不應列為已整合的平台功能。
 進行部署或 API 串接前請先查看對應 route，避免只依文件猜 endpoint。
 
 ## 驗證方式
@@ -317,8 +316,8 @@ python -m pytest
 155 passed, 1 skipped
 ```
 
-AR 分支後續已新增 Blender / USDZ / AR 相關測試，部署前請在目標機器重新跑一次完整 pytest，
-不要把上述舊數字視為目前分支的最新測試總數。
+其後 `main` 已新增 Blender／USDZ／AR 相關程式與測試；部署前請在目標機器重新跑一次完整 pytest。
+不要把上述舊數字視為目前 `main` 的最新測試總數。
 
 ### 前端型別與正式建置
 
@@ -328,7 +327,7 @@ npm run typecheck
 npm run build
 ```
 
-2026-08-05 基線兩項皆通過；AR 分支後續修改依賴與 Viewer 後，部署機器仍應重新執行。
+2026-08-05 基線兩項皆通過；其後 `main` 修改依賴與 Viewer，部署機器仍應重新執行。
 
 ## 停止服務
 

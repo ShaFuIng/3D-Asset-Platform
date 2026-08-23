@@ -2,8 +2,14 @@
 
 - 日期：2026-08-10
 - 負責人：kila606
-- 分支：`kila606/ar-model-viewer`
-- 相關 Commit：尚未提交
+- 歷史開發分支：`kila606/ar-model-viewer`（截至 2026-08-23 已與 `main` 同步）
+- 相關 Commit：`2255252`、`5035808`
+
+## 狀態補註
+
+本頁保留 2026-08-10 當時的測試結果。2026-08-23 盤點確認相關程式與文件已進入
+`main`，且 `main` 與 `kila606/ar-model-viewer` 指向相同提交。下列尚未完成的
+真機放置與真實尺度驗證仍維持待辦，不因分支同步而視為完成。
 
 ## 本次目的
 
@@ -15,12 +21,12 @@ FastAPI API 與 AR Viewer 的測試路徑。這次重點是修正前端相依版
 ## 測試環境
 
 - Windows 筆電
-- 電腦 Tailscale 名稱：`laptop-m64bf4qf`
-- 電腦 Tailscale IP：`100.120.76.41`
-- Android 手機：Samsung Galaxy S23+
-- 手機 Tailscale 名稱：`s23`
-- 手機 Tailscale IP：`100.97.17.49`
-- HTTPS 網址：`https://laptop-m64bf4qf.tailff1aa2.ts.net/`
+- 電腦 Tailscale 名稱：`your-windows-device`
+- 電腦 Tailscale IP：`100.x.x.x`
+- Android 手機：Samsung Galaxy Android phone
+- 手機 Tailscale 名稱：`your-android-device`
+- 手機 Tailscale IP：`100.y.y.y`
+- HTTPS 網址：`https://your-device.your-tailnet.ts.net/`
 
 ## 架構與資料流
 
@@ -48,7 +54,7 @@ Vite dev server proxy 到 `http://127.0.0.1:8000` 的 FastAPI。FastAPI 仍是
 - `frontend/vite.config.ts`：
   - 保持 Vite 監聽 `127.0.0.1:5173`。
   - 新增 `/api` proxy 到 `http://127.0.0.1:8000`。
-  - 允許測試用 Tailscale Host：`laptop-m64bf4qf.tailff1aa2.ts.net`。
+  - 允許測試用 Tailscale Host：`your-device.your-tailnet.ts.net`。
   - 支援用 `.env` 的 `VITE_ALLOWED_HOSTS` 補充其他開發者自己的 host，避免使用
     `allowedHosts: true`。
 - `.env.example`：新增非敏感的 `VITE_ALLOWED_HOSTS` 範例設定欄位；真正的
@@ -60,7 +66,7 @@ Vite dev server proxy 到 `http://127.0.0.1:8000` 的 FastAPI。FastAPI 仍是
 
 ```powershell
 tailscale status
-tailscale ping s23
+tailscale ping your-android-device
 ```
 
 啟動 HTTPS 反向代理：
@@ -108,17 +114,17 @@ tailscale serve --bg http://127.0.0.1:5173
 5. 在 Android Chrome 開啟：
 
 ```text
-https://laptop-m64bf4qf.tailff1aa2.ts.net/
+https://your-device.your-tailnet.ts.net/
 ```
 
-## Android S23+ 操作流程
+## Android Android phone 操作流程
 
-1. Windows 筆電與 S23+ 登入同一個 Tailnet。
-2. 在筆電確認 `tailscale ping s23` 成功。
+1. Windows 筆電與 Android phone 登入同一個 Tailnet。
+2. 在筆電確認 `tailscale ping your-android-device` 成功。
 3. 確認 FastAPI 在 `127.0.0.1:8000` 啟動。
 4. 確認 Vite 在 `127.0.0.1:5173` 啟動。
 5. 啟動 Tailscale Serve。
-6. 用 S23+ 的 Android Chrome 開啟 HTTPS 網址。
+6. 用 Android phone 的 Android Chrome 開啟 HTTPS 網址。
 7. 進入包含 AR Viewer 的模型頁面後，再嘗試由 `<model-viewer>` 觸發
    Google Scene Viewer。
 
@@ -153,7 +159,7 @@ VITE_API_BASE_URL=
 ```
 
 讓前端以同源 `/api` 呼叫後端。手機透過 Tailscale Serve HTTPS 網址存取時，
-瀏覽器看到的 origin 是 `https://laptop-m64bf4qf.tailff1aa2.ts.net`，所以
+瀏覽器看到的 origin 是 `https://your-device.your-tailnet.ts.net`，所以
 API 也走同源 `/api`，再由 Vite proxy 轉送到 FastAPI。
 
 Vite `allowedHosts` 用來限制 dev server 接受哪些 Host header。手機最初曾被
@@ -178,8 +184,8 @@ VITE_ALLOWED_HOSTS=dev-a.tailnet.ts.net,dev-b.tailnet.ts.net
 
 ## 已驗證項目
 
-- Windows 與 S23+ 已登入同一個 Tailnet。
-- `tailscale ping s23` 成功。
+- Windows 與 Android phone 已登入同一個 Tailnet。
+- `tailscale ping your-android-device` 成功。
 - Tailscale Serve 已啟動。
 - HTTPS 網址成功連到 Vite。
 - 手機最初曾被 Vite `allowedHosts` 阻擋。
@@ -191,8 +197,8 @@ VITE_ALLOWED_HOSTS=dev-a.tailnet.ts.net,dev-b.tailnet.ts.net
 
 ## 待驗證項目與目前限制
 
-- S23+ 重新整理後的完整頁面載入仍需再次人工確認。
+- Android phone 重新整理後的完整頁面載入仍需再次人工確認。
 - Google Scene Viewer 是否成功啟動並完成模型放置仍需真機測試。
-- 模型真實尺度尚未驗證，不能視為準確真實比例。
+- 模型真實尺度尚未驗證，不能視為準確真實比例；目前 `arScale` 只是手動顯示倍率，尚未寫入公分／毫米尺寸 metadata 或完成 GLB 尺度校正。
 - iOS AR Quick Look 不屬於本輪 Android 真機測試結果。
 - Tailscale Serve 是開發測試路徑，不等同正式部署。

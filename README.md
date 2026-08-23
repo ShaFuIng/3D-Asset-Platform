@@ -1,9 +1,9 @@
-# 生成式 AI 可編輯 3D 資產平台
+# 生成式 AI 多視角可編輯 3D 資產製作管理平台
 
 本專案目標是建立一套可產生、預覽、管理並逐步編輯 3D 資產的生成式 AI 平台。
 目前已完成可操作的單圖與多視角 MVP：使用者可以生成或上傳參考圖，選擇單圖或
 Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產庫管理產出的圖片與模型。
-目前最新開發分支亦加入 Web AR 預覽、Android Scene Viewer、iOS Quick Look／USDZ
+目前 `main` 已包含 Web AR 預覽、Android Scene Viewer、iOS Quick Look／USDZ
 轉換流程，以及透過 Tailscale Serve 進行 HTTPS 真機測試的開發路徑。
 
 ## 目前進度
@@ -60,6 +60,8 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
 
 - Job、Multiview 工作階段與視角版本紀錄的跨重啟持久化
 - 多 worker 共用 Job 狀態與正式任務佇列
+- 模型真實尺寸 metadata、GLB 尺度校正、AR 固定比例與尺寸驗證
+- Depth Anything 場景重建、尺度校正與桌面端虛擬擺放仍屬研究方向，尚未整合進平台
 - Mesh 部件拆分、材質編輯、拓樸檢查與骨架／IK
 - 完整逐頁 UI QA、RWD 細節與正式視覺 polish
 - 正式環境部署與長時間生成穩定性驗證
@@ -96,6 +98,11 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
 - 建立 Vite same-origin `/api` proxy 與 `VITE_ALLOWED_HOSTS`
 - 驗證 Tailscale Serve HTTPS 可連入 Vite，並可由 Vite proxy 存取本機 FastAPI
 
+2026-08-23：
+
+- 文件盤點確認 `main` 與 `kila606/ar-model-viewer` 指向相同提交，AR／USDZ／Tailscale Serve 已在 `main`。
+- 本次僅更新文件狀態，未重新執行測試；上述 2026-08-04 與 2026-08-05 數字仍是最近一次有紀錄的完整驗證基線。
+
 ## 專案目錄
 
 ```text
@@ -125,6 +132,8 @@ Front／Left／Back 多視角流程，建立 3D Job、預覽 GLB，並在資產�
 ## 重要限制
 
 - Job Store 與 Multiview Version History 目前保存在記憶體，FastAPI 重啟後不會恢復。
+- Hunyuan3D GLB 目前沒有可信的真實世界尺度；Viewer 的 `arScale` 只是手動顯示倍率，不等同公分／毫米校正。
+- Depth Anything V2／3 尚未成為本 Repo 的正式 API 或平台工作流；相關成果應標示為外部／本機研究原型。
 - Asset Catalog 只持久化 `storage/` 中的圖片、模型與 metadata，不等同 Job persistence。
 - OpenAI API Key 只能放在後端環境設定，前端不得保存金鑰。
 - ComfyUI 預設由 FastAPI 後端呼叫，不由瀏覽器直接連線。
