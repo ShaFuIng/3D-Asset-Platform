@@ -26,6 +26,35 @@ ASSET_SORTS = {
     "size_asc": "size_bytes ASC, asset_id ASC",
 }
 
+# Bump this and add the corresponding step to _MIGRATIONS below whenever the
+# `assets` table needs a new column/index on a database that may already
+# exist on disk. CREATE TABLE IF NOT EXISTS in initialize() is a no-op once
+# the table exists, so that statement alone never applies schema changes to
+# an existing assets.db -- this version + migration list is what actually
+# does it.
+#
+# Version numbering (0/1 are historical, not a fresh choice -- see below):
+#   0 -- a brand new database that has never run initialize() before
+#        (PRAGMA user_version defaults to 0 and nothing has bumped it yet).
+#   1 -- the schema every already-deployed assets.db is actually sitting at
+#        today: no parent_asset_id column. Pre-migration-mechanism code
+#        unconditionally set `PRAGMA user_version = 1` the first time it
+#        ever ran initialize() (see git history), so this value is already
+#        taken on every real database out there -- it is NOT available to
+#        assign to the first real migration step. Treat 1 as a fixed,
+#        pre-existing baseline, not as "the first migration".
+#   2 -- adds parent_asset_id. This is the first version this migration
+#        mechanism itself is responsible for reaching.
+SCHEMA_VERSION = 2
+
+# Keyed by the version a step upgrades *to*. Each step is a tuple of SQL
+# statements applied in order; initialize() runs every step from the
+# database's current PRAGMA user_version up to SCHEMA_VERSION, one version
+# at a time, so user_version always reflects exactly how far migration got.
+_MIGRATIONS: dict[int, tuple[str, ...]] = {
+    2: ("ALTER TABLE assets ADD COLUMN parent_asset_id TEXT",),
+}
+
 
 @dataclass(frozen=True)
 class AssetRecord:
@@ -46,6 +75,7 @@ class AssetRecord:
     reference_image_id: str | None = None
     view_name: str | None = None
     original_filename: str | None = None
+    parent_asset_id: str | None = None
 
 
 class AssetCatalog:
@@ -77,7 +107,8 @@ class AssetCatalog:
                     related_job_id TEXT,
                     reference_image_id TEXT,
                     view_name TEXT,
-                    original_filename TEXT
+                    original_filename TEXT,
+                    parent_asset_id TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_assets_type_deleted
                     ON assets(asset_type, deleted_at);
@@ -90,8 +121,14 @@ class AssetCatalog:
                 """
             )
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version < 1:
-                connection.execute("PRAGMA user_version = 1")
+            while version < SCHEMA_VERSION:
+                next_version = version + 1
+                for statement in _MIGRATIONS.get(next_version, ()):
+                    _apply_migration_statement(connection, statement)
+                # PRAGMA doesn't support parameter binding; next_version is
+                # our own int constant from _MIGRATIONS, never user input.
+                connection.execute(f"PRAGMA user_version = {next_version}")
+                version = next_version
 
     def reconcile(self, images_dir: Path, models_dir: Path) -> None:
         images_dir.mkdir(parents=True, exist_ok=True)
@@ -306,9 +343,9 @@ class AssetCatalog:
                     asset_id, asset_type, filename, relative_path, media_type, source,
                     created_at, deleted_at, size_bytes, status, parent_image_id,
                     pipeline, model_variant, related_job_id, reference_image_id,
-                    view_name, original_filename
+                    view_name, original_filename, parent_asset_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(relative_path) DO UPDATE SET
                     filename = excluded.filename,
                     media_type = excluded.media_type,
@@ -321,7 +358,16 @@ class AssetCatalog:
                     related_job_id = excluded.related_job_id,
                     reference_image_id = excluded.reference_image_id,
                     view_name = excluded.view_name,
-                    original_filename = excluded.original_filename
+                    original_filename = excluded.original_filename,
+                    -- Unlike every other column above, a plain
+                    -- `= excluded.parent_asset_id` would clobber an
+                    -- already-set value back to NULL on every reconcile()
+                    -- upsert that wasn't explicitly told about it (most
+                    -- callers construct a fresh AssetRecord() and never
+                    -- pass parent_asset_id, so it defaults to None). Keep
+                    -- the existing value unless this upsert explicitly
+                    -- provides a new one.
+                    parent_asset_id = COALESCE(excluded.parent_asset_id, assets.parent_asset_id)
                 """,
                 _record_values(record),
             )
@@ -438,6 +484,19 @@ class AssetCatalog:
         return str(uuid.uuid4())
 
 
+def _apply_migration_statement(connection: sqlite3.Connection, statement: str) -> None:
+    try:
+        connection.execute(statement)
+    except sqlite3.OperationalError as exc:
+        # Re-running a migration against a DB that already has it applied
+        # (e.g. initialize() called again on backend restart) must be a
+        # safe no-op, not a crash. SQLite's ALTER TABLE ADD COLUMN raises
+        # exactly this message when the column already exists; anything
+        # else is a real failure and should still surface.
+        if "duplicate column name" not in str(exc):
+            raise
+
+
 def _known_image_uuid(filename: str) -> str | None:
     suffix = Path(filename).suffix.lower()
     if suffix not in IMAGE_MEDIA_TYPES:
@@ -489,4 +548,5 @@ def _record_values(record: AssetRecord) -> tuple:
         record.reference_image_id,
         record.view_name,
         record.original_filename,
+        record.parent_asset_id,
     )
