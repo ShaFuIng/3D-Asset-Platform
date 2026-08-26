@@ -8,6 +8,26 @@ from ..storage import AssetStorage
 from .library import asset_content_path, require_asset
 
 
+def calibrate_asset(
+    catalog: AssetCatalog,
+    storage: AssetStorage,
+    asset_id: str,
+    target_max_dimension_cm: float,
+) -> AssetRecord:
+    """Bake a new calibrated GLB for asset_id, trashing any previously
+    calibrated (still-active) children first so only the newest calibrated
+    result counts as "currently in effect" -- the old one is recoverable
+    from trash, it's just no longer the active one. Trashing happens before
+    baking: if baking then fails, the raw asset is briefly left with no
+    active calibrated child, which is an accepted tradeoff for keeping this
+    simple (see Phase 4 dev log for the alternative considered).
+    """
+    for child in catalog.find_derived_assets(asset_id):
+        if child.deleted_at is None:
+            catalog.trash_asset(child.asset_id)
+    return bake_calibrated_model(catalog, storage, asset_id, target_max_dimension_cm)
+
+
 def bake_calibrated_model(
     catalog: AssetCatalog,
     storage: AssetStorage,

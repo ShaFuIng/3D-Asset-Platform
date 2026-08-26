@@ -206,6 +206,12 @@ class LibraryAssetResponse(BaseModel):
     reference_image_id: str | None
     view_name: str | None
     original_filename: str | None
+    parent_asset_id: str | None
+    calibrated_asset_ids: list[str]
+
+
+class CalibrateAssetRequest(BaseModel):
+    target_max_dimension_cm: float
 
 
 class LibraryAssetListResponse(BaseModel):

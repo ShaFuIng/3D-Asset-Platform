@@ -11,3 +11,4 @@
 - [2026-08-26：模型校正 Phase 0：assets.db migration 機制 + parent_asset_id 欄位](./2026-08-26-model-calibration-phase0-db-migration.md)
 - [2026-08-26：模型校正 Phase 2：校正 asset 的依賴關係](./2026-08-26-model-calibration-phase2-dependency-check.md)
 - [2026-08-26：模型校正 Phase 3：GLB 校正 baking 服務](./2026-08-26-model-calibration-phase3-baking-service.md)
+- [2026-08-26：模型校正 Phase 4：校正 API endpoint](./2026-08-26-model-calibration-phase4-api-endpoint.md)
