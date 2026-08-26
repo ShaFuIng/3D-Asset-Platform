@@ -94,13 +94,13 @@ async def permanently_delete_asset(
 
 
 def _ensure_no_dependencies(catalog: AssetCatalog, asset: AssetRecord) -> None:
-    if asset.asset_type != "image":
+    if asset.asset_type == "image":
+        candidates = [*catalog.find_children(asset.asset_id), *catalog.find_references(asset.asset_id)]
+    elif asset.asset_type == "model":
+        candidates = catalog.find_derived_assets(asset.asset_id)
+    else:
         return
-    dependents = [
-        dependent
-        for dependent in [*catalog.find_children(asset.asset_id), *catalog.find_references(asset.asset_id)]
-        if dependent.asset_id != asset.asset_id
-    ]
+    dependents = [dependent for dependent in candidates if dependent.asset_id != asset.asset_id]
     if dependents:
         raise ApiError(
             409,
