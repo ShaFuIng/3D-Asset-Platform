@@ -4,6 +4,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 // Registers the <model-viewer> custom element used by the "View in AR" panel below.
 import '@google/model-viewer';
+import { ApiClientError, calibrateAsset, resolveApiUrl } from '../api/client';
+import type { LibraryAsset } from '../types/api';
 
 /*
  * Multi-directional lighting and inspection modes are adapted from
@@ -23,7 +25,36 @@ type ModelViewerProps = {
    * (which only needs `src`) works.
    */
   usdzUrl?: string;
+  /**
+   * The *raw* library asset's id — used to call the calibrate/STL
+   * endpoints regardless of whether `src` above currently points at the
+   * raw GLB or an already-calibrated one. Calibration status is fetched
+   * by the caller (see useAssetCalibration), not by this component —
+   * ModelViewer stays purely props-driven.
+   */
+  assetId?: string;
+  /** Whether `src` is currently showing a calibrated (real-world-scale) GLB. */
+  isCalibrated?: boolean;
+  /** Called after a successful calibrate call, so the caller can refresh
+   * its own calibration state and hand back a new `src`/`isCalibrated`. */
+  onCalibrated?: (calibrated: LibraryAsset) => void;
 };
+
+const CALIBRATION_PRESETS = [
+  { label: '小', cm: 5 },
+  { label: '中', cm: 15 },
+  { label: '大', cm: 30 },
+];
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return '';
+  }
+  if (error instanceof ApiClientError || error instanceof Error) {
+    return error.message;
+  }
+  return '校正失敗，請稍後再試。';
+}
 
 // model-viewer's element type isn't exported in a way our JSX declaration
 // can reuse directly; this is just enough to call the one imperative method
@@ -64,7 +95,7 @@ const EMPTY_STATS: ModelStats = {
   triangles: 0,
 };
 
-export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
+export function ModelViewer({ src, usdzUrl, assetId, isCalibrated, onCalibrated }: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ViewerRuntime | null>(null);
   const materialModeRef = useRef<MaterialMode>('original');
@@ -79,10 +110,12 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   // shader-based AR Preview on kila606/ar-preview-demo). Off by default so
   // the extra <model-viewer> element only mounts when actually requested.
   const [arOpen, setArOpen] = useState(false);
-  // Hunyuan3D GLBs are normalized (no real-world scale), so AR placement is
-  // often the wrong size. This is a manual fudge factor for now, not a real
-  // fix — see model-viewer's `scale` attribute below.
-  const [arScale, setArScale] = useState(1);
+  // Real-world-size calibration (Phase 6): replaces the old manual arScale
+  // fudge-factor input entirely — see the calibration panel below, which is
+  // shown as soon as a GLB is loaded, independent of arOpen.
+  const [targetCm, setTargetCm] = useState(CALIBRATION_PRESETS[1].cm);
+  const [isSaving, setIsSaving] = useState(false);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
   // iOS Quick Look needs a USDZ, which the backend only converts on demand
   // (see `usdzUrl` above). `resolvedIosSrc` is set once that fetch
   // succeeds, so re-clicking within the same session skips straight to
@@ -242,6 +275,22 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
     };
   }, [src]);
 
+  async function handleSaveCalibration() {
+    if (!assetId || !Number.isFinite(targetCm) || targetCm <= 0) {
+      return;
+    }
+    setIsSaving(true);
+    setCalibrationError(null);
+    try {
+      const calibrated = await calibrateAsset(assetId, targetCm);
+      onCalibrated?.(calibrated);
+    } catch (err) {
+      setCalibrationError(getErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleArButtonClick() {
     const modelViewer = arModelViewerRef.current as ModelViewerElement | null;
     if (!modelViewer) {
@@ -331,25 +380,55 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
         {error && <div className="viewer-error">{error}</div>}
         <div ref={containerRef} className="three-canvas" aria-label="Generated 3D asset preview" />
       </div>
+      {assetId && (
+        <div className="viewer-calibration-panel" aria-label="Real-world size calibration">
+          <span className="badge" data-kind={isCalibrated ? 'succeeded' : 'unknown'}>
+            {isCalibrated ? '已校正' : '尚未校正'}
+          </span>
+          <div className="calibration-presets" role="group" aria-label="Calibration presets">
+            {CALIBRATION_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                data-selected={targetCm === preset.cm}
+                onClick={() => setTargetCm(preset.cm)}
+              >
+                {preset.label}（{preset.cm}cm）
+              </button>
+            ))}
+          </div>
+          <label className="calibration-custom-input">
+            自訂最長邊（公分）
+            <input
+              type="number"
+              step="0.1"
+              min="0.1"
+              value={targetCm}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setTargetCm(Number.isFinite(next) ? next : CALIBRATION_PRESETS[1].cm);
+              }}
+            />
+          </label>
+          <button type="button" disabled={isSaving} onClick={() => void handleSaveCalibration()}>
+            {isSaving ? '校正中...' : '儲存並校正'}
+          </button>
+          {calibrationError && <p className="hint error">{calibrationError}</p>}
+          {isCalibrated && (
+            <a
+              className="download-link"
+              href={resolveApiUrl(`/api/library/assets/${assetId}/stl`)}
+              download
+            >
+              下載 STL
+            </a>
+          )}
+        </div>
+      )}
       <div className="viewer-ar-panel" aria-label="Real-device AR preview (native model-viewer)">
         <button type="button" onClick={() => setArOpen((current) => !current)}>
           {arOpen ? '關閉 AR 檢視' : '在 AR 中檢視'}
         </button>
-        {arOpen && (
-          <label className="viewer-ar-scale">
-            AR 縮放（暫時手動調整，Hunyuan3D 模型無真實尺度）
-            <input
-              type="number"
-              step="0.1"
-              min="0.01"
-              value={arScale}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                setArScale(Number.isFinite(next) && next > 0 ? next : 1);
-              }}
-            />
-          </label>
-        )}
         {arOpen && (
           <>
             <model-viewer
@@ -360,7 +439,8 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
               ar
               ar-modes="scene-viewer quick-look"
               camera-controls
-              scale={`${arScale} ${arScale} ${arScale}`}
+              scale="1 1 1"
+              ar-scale={isCalibrated ? 'fixed' : undefined}
               alt="Generated 3D asset in AR"
             />
             <button

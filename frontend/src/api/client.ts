@@ -247,6 +247,19 @@ export async function restoreLibraryAsset(assetId: string, signal?: AbortSignal)
   });
 }
 
+export async function calibrateAsset(
+  assetId: string,
+  targetMaxDimensionCm: number,
+  signal?: AbortSignal,
+): Promise<LibraryAsset> {
+  return requestJson(`/api/library/assets/${encodeURIComponent(assetId)}/calibrate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_max_dimension_cm: targetMaxDimensionCm }),
+    signal,
+  });
+}
+
 export async function deleteLibraryAsset(
   assetId: string,
   signal?: AbortSignal,

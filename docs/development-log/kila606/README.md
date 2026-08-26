@@ -14,3 +14,4 @@
 - [2026-08-26：模型校正 Phase 3：GLB 校正 baking 服務](./2026-08-26-model-calibration-phase3-baking-service.md)
 - [2026-08-26：模型校正 Phase 4：校正 API endpoint](./2026-08-26-model-calibration-phase4-api-endpoint.md)
 - [2026-08-26：模型校正 Phase 5：STL 匯出](./2026-08-26-model-calibration-phase5-stl-export.md)
+- [2026-08-26：模型校正 Phase 6：前端 UI](./2026-08-26-model-calibration-phase6-frontend-ui.md)

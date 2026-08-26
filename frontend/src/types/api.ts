@@ -202,6 +202,8 @@ export type LibraryAsset = {
   reference_image_id: string | null;
   view_name: string | null;
   original_filename: string | null;
+  parent_asset_id: string | null;
+  calibrated_asset_ids: string[];
 };
 
 export type LibraryAssetQuery = {

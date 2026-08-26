@@ -19,6 +19,7 @@ interface ModelViewerJSX
   'ar-modes'?: string;
   'camera-controls'?: boolean;
   scale?: string;
+  'ar-scale'?: 'auto' | 'fixed';
   alt?: string;
 }
 
