@@ -737,6 +737,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           message: '3D generation job is queued.',
           prompt_id: null,
           result: null,
+          asset_id: null,
         },
       }));
       return created.job_id;
