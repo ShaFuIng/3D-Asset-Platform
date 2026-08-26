@@ -21,7 +21,7 @@ from ..services.library import (
     restore_asset,
     trash_asset,
 )
-from ..services.model_calibration import calibrate_asset
+from ..services.model_calibration import calibrate_asset, export_calibrated_stl
 
 router = APIRouter()
 
@@ -96,6 +96,16 @@ async def get_library_asset_usdz(request: Request, asset_id: str) -> FileRespons
         media_type="model/vnd.usdz+zip",
         filename=f"{asset.asset_id}.usdz",
     )
+
+
+@router.get("/api/library/assets/{asset_id}/stl")
+async def get_library_asset_stl(request: Request, asset_id: str) -> FileResponse:
+    # asset_id here is the *raw* asset, same as calibrated_asset_ids being
+    # exposed on the raw asset's LibraryAssetResponse -- export_calibrated_stl()
+    # resolves the currently-active calibrated child internally and blocks
+    # with asset_not_calibrated if there isn't one.
+    stl_path = export_calibrated_stl(request.app.state.asset_catalog, asset_id)
+    return FileResponse(stl_path, media_type="model/stl", filename=f"{asset_id}-calibrated.stl")
 
 
 @router.post("/api/library/assets/{asset_id}/trash", response_model=LibraryAssetResponse)

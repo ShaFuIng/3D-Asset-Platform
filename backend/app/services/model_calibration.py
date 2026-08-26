@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 
 import trimesh
 
@@ -78,6 +79,50 @@ def bake_calibrated_model(
         asset_id=new_asset_id,
         parent_asset_id=raw_asset.asset_id,
     )
+
+
+def export_calibrated_stl(catalog: AssetCatalog, asset_id: str) -> Path:
+    """Resolve asset_id's currently-active calibrated child and return the
+    path to a millimeter-scaled STL derived from it. Generated once,
+    cached next to the calibrated GLB on subsequent calls -- same caching
+    shape as blender_client.convert_or_raise() for USDZ.
+
+    asset_id must be the *raw* asset's id, not a calibrated asset's own id
+    -- calibrated assets aren't themselves accepted here (see Phase 5 dev
+    log for why this restriction was kept as-is).
+    """
+    calibrated = _require_active_calibrated_asset(catalog, asset_id)
+    glb_path = asset_content_path(catalog, calibrated)
+    stl_path = glb_path.with_suffix(".stl")
+    if not stl_path.exists():
+        scene = trimesh.load(glb_path)
+        # STL has no unit concept -- trimesh does NOT auto-convert; the
+        # printing/slicer convention is millimeters, and the calibrated
+        # GLB's vertex data is already real-world meters (Phase 3's bake),
+        # so x1000 here is the one and only unit conversion this needs.
+        scene.apply_scale(1000.0)
+        # to_geometry() bakes the (now x1000) transform into a single
+        # Trimesh's vertex data -- STL is geometry-only anyway (no
+        # materials), and Scene.dump(concatenate=True) is deprecated for
+        # removal in trimesh, so this is the current recommended way to
+        # flatten a Scene into one mesh.
+        combined = scene.to_geometry()
+        combined.export(stl_path)
+    return stl_path
+
+
+def _require_active_calibrated_asset(catalog: AssetCatalog, asset_id: str) -> AssetRecord:
+    require_asset(catalog, asset_id)  # 404 if asset_id itself doesn't exist
+    active_children = [
+        child for child in catalog.find_derived_assets(asset_id) if child.deleted_at is None
+    ]
+    if not active_children:
+        raise ApiError(
+            409,
+            "asset_not_calibrated",
+            "Asset must have an active calibrated version before exporting STL.",
+        )
+    return active_children[0]
 
 
 def _load_and_bake_scale(raw_path, target_max_dimension_cm: float) -> trimesh.Scene:

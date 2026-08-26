@@ -524,6 +524,29 @@ def test_calibrated_asset_appears_in_library_list_with_parent_asset_id(client: T
     assert items_by_id[calibrated["asset_id"]]["calibrated_asset_ids"] == []
 
 
+def test_get_stl_endpoint_returns_file(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+    client.post(f"/api/library/assets/{raw.asset_id}/calibrate", json={"target_max_dimension_cm": 15.0})
+
+    response = client.get(f"/api/library/assets/{raw.asset_id}/stl")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "model/stl"
+    reloaded = trimesh.load_mesh(trimesh.util.wrap_as_stream(response.content), file_type="stl")
+    assert abs(max(reloaded.bounds[1] - reloaded.bounds[0]) - 150.0) < 0.01
+
+
+def test_get_stl_endpoint_without_calibration_returns_409(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+
+    response = client.get(f"/api/library/assets/{raw.asset_id}/stl")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_not_calibrated"
+
+
 def test_permission_error_keeps_db_record(client: TestClient, monkeypatch) -> None:
     upload = _upload(client, "asset.png")
     client.post(f"/api/library/assets/{upload['image_id']}/trash")
