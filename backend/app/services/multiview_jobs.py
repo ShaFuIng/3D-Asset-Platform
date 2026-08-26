@@ -48,6 +48,8 @@ class MultiviewModelJob:
     prompt_id: str | None
     geometry_path: Path | None
     textured_path: Path | None
+    geometry_asset_id: str | None = None
+    textured_asset_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -336,6 +338,8 @@ class MultiviewJobStore:
         prompt_id: str | None = None,
         geometry_path: Path | None = None,
         textured_path: Path | None = None,
+        geometry_asset_id: str | None = None,
+        textured_asset_id: str | None = None,
     ) -> MultiviewJob | None:
         current = await self._require(job_id)
         if current.model_job is None:
@@ -346,6 +350,12 @@ class MultiviewJobStore:
             prompt_id=prompt_id if prompt_id is not None else current.model_job.prompt_id,
             geometry_path=geometry_path if geometry_path is not None else current.model_job.geometry_path,
             textured_path=textured_path if textured_path is not None else current.model_job.textured_path,
+            geometry_asset_id=(
+                geometry_asset_id if geometry_asset_id is not None else current.model_job.geometry_asset_id
+            ),
+            textured_asset_id=(
+                textured_asset_id if textured_asset_id is not None else current.model_job.textured_asset_id
+            ),
         )
         return await self._update(job_id, model_job=model_job)
 
@@ -509,7 +519,7 @@ async def run_multiview_model_job(
         geometry_path = asset_storage.models_dir / f"{job_id}-geometry.glb"
         textured_path = asset_storage.models_dir / f"{job_id}-textured.glb"
         await comfy.download_output(outputs["geometry"].as_dict(), geometry_path)
-        asset_storage.register_model_file(
+        geometry_record = asset_storage.register_model_file(
             geometry_path,
             source="generated",
             pipeline="multiview",
@@ -518,7 +528,7 @@ async def run_multiview_model_job(
             reference_image_id=job.reference_image.image_id,
         )
         await comfy.download_output(outputs["textured"].as_dict(), textured_path)
-        asset_storage.register_model_file(
+        textured_record = asset_storage.register_model_file(
             textured_path,
             source="generated",
             pipeline="multiview",
@@ -532,6 +542,8 @@ async def run_multiview_model_job(
             message="Multiview 3D generation completed.",
             geometry_path=geometry_path,
             textured_path=textured_path,
+            geometry_asset_id=geometry_record.asset_id,
+            textured_asset_id=textured_record.asset_id,
         )
     except (ApiError, ComfyClientError, Exception) as exc:
         await store.update_model_job(

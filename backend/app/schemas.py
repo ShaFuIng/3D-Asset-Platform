@@ -102,6 +102,7 @@ class Create3DJobResponse(BaseModel):
     job_id: str
     status: JobStatus
     status_url: str
+    asset_id: str | None
 
 
 class JobResult(BaseModel):
@@ -114,6 +115,7 @@ class JobResponse(BaseModel):
     message: str
     prompt_id: str | None
     result: JobResult | None
+    asset_id: str | None
 
 
 class MultiviewImageRef(BaseModel):
@@ -166,6 +168,7 @@ class MultiviewJobResponse(BaseModel):
 class MultiviewModelRef(BaseModel):
     available: bool
     download_url: str | None
+    asset_id: str | None
 
 
 class MultiviewModelJobResponse(BaseModel):

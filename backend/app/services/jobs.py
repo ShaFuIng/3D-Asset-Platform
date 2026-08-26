@@ -15,6 +15,7 @@ class Job:
     message: str
     prompt_id: str | None
     model_path: Path | None
+    asset_id: str | None = None
 
 
 class JobStore:
@@ -49,6 +50,7 @@ class JobStore:
         message: str | None = None,
         prompt_id: str | None = None,
         model_path: Path | None = None,
+        asset_id: str | None = None,
     ) -> Job | None:
         async with self._lock:
             current = self._jobs.get(job_id)
@@ -60,6 +62,7 @@ class JobStore:
                 message=message or current.message,
                 prompt_id=prompt_id if prompt_id is not None else current.prompt_id,
                 model_path=model_path if model_path is not None else current.model_path,
+                asset_id=asset_id if asset_id is not None else current.asset_id,
             )
             self._jobs[job_id] = updated
             return updated
@@ -82,8 +85,9 @@ async def run_3d_job(
         await store.update(job_id, prompt_id=prompt_id)
         output = await comfy.wait_for_glb_output(prompt_id)
         await comfy.download_output(output, model_path)
+        asset_id = None
         if asset_storage is not None:
-            asset_storage.register_model_file(
+            registered_asset = asset_storage.register_model_file(
                 model_path,
                 source="generated",
                 pipeline="single",
@@ -91,11 +95,13 @@ async def run_3d_job(
                 related_job_id=job_id,
                 reference_image_id=image.image_id,
             )
+            asset_id = registered_asset.asset_id
         await store.update(
             job_id,
             status=JobStatus.succeeded,
             message="3D model generation completed.",
             model_path=model_path,
+            asset_id=asset_id,
         )
     except (ComfyClientError, Exception) as exc:
         await store.update(
