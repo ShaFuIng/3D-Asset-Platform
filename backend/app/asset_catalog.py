@@ -118,6 +118,8 @@ class AssetCatalog:
                     ON assets(reference_image_id);
                 CREATE INDEX IF NOT EXISTS idx_assets_related_job_id
                     ON assets(related_job_id);
+                CREATE INDEX IF NOT EXISTS idx_assets_parent_asset_id
+                    ON assets(parent_asset_id);
                 """
             )
             version = connection.execute("PRAGMA user_version").fetchone()[0]
@@ -331,6 +333,14 @@ class AssetCatalog:
             rows = connection.execute(
                 "SELECT * FROM assets WHERE reference_image_id = ?",
                 (reference_image_id,),
+            ).fetchall()
+        return [_record_from_row(row) for row in rows]
+
+    def find_derived_assets(self, parent_asset_id: str) -> list[AssetRecord]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM assets WHERE parent_asset_id = ?",
+                (parent_asset_id,),
             ).fetchall()
         return [_record_from_row(row) for row in rows]
 

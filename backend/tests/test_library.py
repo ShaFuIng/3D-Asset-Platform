@@ -324,6 +324,97 @@ def test_model_delete_does_not_delete_reference_or_other_variant(client: TestCli
     assert textured_path.exists()
 
 
+def _register_calibrated_child(client: TestClient, parent_asset_id: str, filename: str) -> AssetRecord:
+    # Phase 3/4's baking service doesn't exist yet -- this simulates its
+    # end result (a second model asset whose parent_asset_id points back at
+    # the raw GLB it was calibrated from) directly via upsert_asset(),
+    # exactly like register_model_file() does internally.
+    catalog = client.app.state.asset_catalog
+    path = client.app.state.storage.models_dir / filename
+    path.write_bytes(GLB_BYTES)
+    return catalog.upsert_asset(
+        AssetRecord(
+            asset_id=str(uuid.uuid4()),
+            asset_type="model",
+            filename=filename,
+            relative_path=catalog.relative_path_for(path),
+            media_type="model/gltf-binary",
+            source="calibrated",
+            created_at="2026-01-01T00:00:00+00:00",
+            deleted_at=None,
+            size_bytes=len(GLB_BYTES),
+            status="available",
+            parent_asset_id=parent_asset_id,
+        )
+    )
+
+
+def test_model_with_calibrated_child_cannot_be_deleted(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw_path = client.app.state.storage.models_dir / "raw.glb"
+    raw_path.write_bytes(GLB_BYTES)
+    raw = client.app.state.storage.register_model_file(
+        raw_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+    calibrated = _register_calibrated_child(client, raw.asset_id, "calibrated.glb")
+    client.post(f"/api/library/assets/{raw.asset_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{raw.asset_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_in_use"
+    assert response.json()["error"]["details"]["dependents"][0]["asset_id"] == calibrated.asset_id
+
+
+def test_model_without_calibrated_child_can_be_deleted(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    model_path = client.app.state.storage.models_dir / "no-child.glb"
+    model_path.write_bytes(GLB_BYTES)
+    model = client.app.state.storage.register_model_file(
+        model_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+    client.post(f"/api/library/assets/{model.asset_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{model.asset_id}")
+
+    assert response.status_code == 200
+    assert client.app.state.asset_catalog.get_asset(model.asset_id) is None
+
+
+def test_calibrated_child_itself_can_be_deleted(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw_path = client.app.state.storage.models_dir / "raw2.glb"
+    raw_path.write_bytes(GLB_BYTES)
+    raw = client.app.state.storage.register_model_file(
+        raw_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+    calibrated = _register_calibrated_child(client, raw.asset_id, "calibrated2.glb")
+    client.post(f"/api/library/assets/{calibrated.asset_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{calibrated.asset_id}")
+
+    assert response.status_code == 200
+    assert client.app.state.asset_catalog.get_asset(calibrated.asset_id) is None
+    # Deleting the calibrated child must never cascade back onto its raw
+    # source -- the dependency direction only blocks parent -> child.
+    assert client.app.state.asset_catalog.get_asset(raw.asset_id) is not None
+
+
 def test_permission_error_keeps_db_record(client: TestClient, monkeypatch) -> None:
     upload = _upload(client, "asset.png")
     client.post(f"/api/library/assets/{upload['image_id']}/trash")

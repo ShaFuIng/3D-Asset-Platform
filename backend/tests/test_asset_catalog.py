@@ -206,6 +206,42 @@ def test_trash_child_is_still_returned_by_dependency_query(tmp_path: Path) -> No
     assert [child.asset_id for child in children] == [child_id]
 
 
+def test_find_derived_assets_returns_calibrated_children_and_filters_unrelated(tmp_path: Path) -> None:
+    catalog, _, _ = _catalog_with_dirs(tmp_path)
+    raw_id = str(uuid.uuid4())
+    calibrated_id = str(uuid.uuid4())
+    unrelated_id = str(uuid.uuid4())
+    catalog.upsert_asset(
+        _asset_record(
+            asset_id=raw_id,
+            asset_type="model",
+            relative_path="models/raw.glb",
+            filename="raw.glb",
+        )
+    )
+    catalog.upsert_asset(
+        _asset_record(
+            asset_id=calibrated_id,
+            asset_type="model",
+            relative_path="models/calibrated.glb",
+            filename="calibrated.glb",
+            parent_asset_id=raw_id,
+        )
+    )
+    catalog.upsert_asset(
+        _asset_record(
+            asset_id=unrelated_id,
+            asset_type="model",
+            relative_path="models/unrelated.glb",
+            filename="unrelated.glb",
+        )
+    )
+
+    derived = catalog.find_derived_assets(raw_id)
+
+    assert [asset.asset_id for asset in derived] == [calibrated_id]
+
+
 def test_asset_storage_recovers_image_after_backend_restart(settings) -> None:
     app = create_app(settings)
     app.state.openai_client = None
