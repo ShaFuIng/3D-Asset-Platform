@@ -76,6 +76,7 @@ export type Create3DJobResponse = {
   job_id: string;
   status: JobStatus;
   status_url: string;
+  asset_id: string | null;
 };
 
 export type JobResponse = {
@@ -86,6 +87,7 @@ export type JobResponse = {
   result: {
     model_url: string;
   } | null;
+  asset_id: string | null;
 };
 
 export type MultiviewName = 'front' | 'left' | 'back';
@@ -158,10 +160,12 @@ export type MultiviewModelJobResponse = {
   geometryModel: {
     available: boolean;
     downloadUrl: string | null;
+    assetId: string | null;
   };
   texturedModel: {
     available: boolean;
     downloadUrl: string | null;
+    assetId: string | null;
   };
 };
 

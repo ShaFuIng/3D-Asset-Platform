@@ -334,8 +334,8 @@ def _model_job_response(job: MultiviewJob) -> MultiviewModelJobResponse:
             status=JobStatus.queued,
             message="Multiview 3D generation job has not been started.",
             prompt_id=None,
-            geometry_model=MultiviewModelRef(available=False, download_url=None),
-            textured_model=MultiviewModelRef(available=False, download_url=None),
+            geometry_model=MultiviewModelRef(available=False, download_url=None, asset_id=None),
+            textured_model=MultiviewModelRef(available=False, download_url=None, asset_id=None),
         )
     return MultiviewModelJobResponse(
         status=model_job.status,
@@ -346,12 +346,14 @@ def _model_job_response(job: MultiviewJob) -> MultiviewModelJobResponse:
             download_url=f"/api/multiview/jobs/{job.job_id}/models/geometry"
             if model_job.geometry_path is not None
             else None,
+            asset_id=model_job.geometry_asset_id,
         ),
         textured_model=MultiviewModelRef(
             available=model_job.textured_path is not None and model_job.textured_path.exists(),
             download_url=f"/api/multiview/jobs/{job.job_id}/models/textured"
             if model_job.textured_path is not None
             else None,
+            asset_id=model_job.textured_asset_id,
         ),
     )
 
