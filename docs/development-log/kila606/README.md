@@ -9,3 +9,4 @@
 - [2026-08-09：Library 頁面 USDZ 支援（asset-based）＋三頁面 AR loading/錯誤狀態視覺驗證](./2026-08-09-library-usdz-and-ar-visual-verification.md)
 - [2026-08-10：Android AR 真機測試與 Tailscale Serve 設定](./2026-08-10-android-ar-tailscale-serve.md)
 - [2026-08-26：模型校正 Phase 0：assets.db migration 機制 + parent_asset_id 欄位](./2026-08-26-model-calibration-phase0-db-migration.md)
+- [2026-08-26：模型校正 Phase 3：GLB 校正 baking 服務](./2026-08-26-model-calibration-phase3-baking-service.md)

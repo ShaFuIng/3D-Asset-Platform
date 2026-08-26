@@ -141,15 +141,17 @@ class AssetStorage:
         source: str,
         pipeline: str,
         model_variant: str,
-        related_job_id: str,
-        reference_image_id: str,
+        related_job_id: str | None,
+        reference_image_id: str | None,
+        asset_id: str | None = None,
+        parent_asset_id: str | None = None,
     ) -> AssetRecord:
         resolved = path.resolve()
         if not resolved.exists() or not resolved.is_file() or resolved.suffix.lower() != ".glb":
             raise ApiError(404, "model_not_found", "Generated GLB model was not found.")
         return self._register_asset(
             AssetRecord(
-                asset_id=str(uuid.uuid4()),
+                asset_id=asset_id or str(uuid.uuid4()),
                 asset_type="model",
                 filename=resolved.name,
                 relative_path=self._relative_path_for_catalog(resolved),
@@ -163,6 +165,7 @@ class AssetStorage:
                 model_variant=model_variant,
                 related_job_id=related_job_id,
                 reference_image_id=reference_image_id,
+                parent_asset_id=parent_asset_id,
             )
         )
 
