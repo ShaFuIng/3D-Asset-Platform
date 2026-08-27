@@ -821,6 +821,100 @@ code {
   cursor: pointer;
 }
 
+.viewer-ar-button.secondary {
+  background: #374151;
+}
+
+.experimental-xr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: hidden;
+  background: #05080b;
+  color: #ffffff;
+  touch-action: none;
+}
+
+.experimental-xr-overlay canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.experimental-xr-status {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+  width: min(420px, calc(100% - 32px));
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 12, 16, 0.82);
+  color: #e5e7eb;
+}
+
+.experimental-xr-status strong {
+  font-size: 0.9rem;
+}
+
+.experimental-xr-status span,
+.experimental-xr-status small {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.experimental-xr-error {
+  color: #fecaca !important;
+}
+
+.experimental-xr-reticle-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  min-width: 86px;
+  padding: 5px 8px;
+  transform: translate(-50%, calc(-50% + 58px));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(8, 12, 16, 0.76);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.experimental-xr-reticle-label[data-ready='true'] {
+  border-color: #2fd4c4;
+  color: #99f6e4;
+}
+
+.experimental-xr-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(8, 12, 16, 0.78);
+}
+
+.experimental-xr-controls button {
+  min-height: 38px;
+  border-color: #64748b;
+  background: #2563eb;
+  font-size: 0.82rem;
+}
+
 /* ===== ImageLightbox (frontend/src/components/ImageLightbox.tsx) ===== */
 
 .lightbox-overlay {

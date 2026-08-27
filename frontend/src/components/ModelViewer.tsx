@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { ExperimentalWebXRViewer } from './ExperimentalWebXRViewer';
 // Registers the <model-viewer> custom element used by the "View in AR" panel below.
 import '@google/model-viewer';
 
@@ -19,8 +20,8 @@ type ModelViewerProps = {
    * `GET /api/multiview/jobs/{job_id}/models/{kind}/usdz`. The backend
    * converts + caches on first hit (see blender_client.py), so this is
    * safe to fetch on every "在 AR 中檢視" click. Optional — without it,
-   * iOS AR Quick Look stays unavailable and only Android Scene Viewer
-   * (which only needs `src`) works.
+   * iOS AR Quick Look stays unavailable; Android uses WebXR so runtime
+   * AR scale remains in effect.
    */
   usdzUrl?: string;
 };
@@ -48,6 +49,33 @@ type ModelStats = {
   triangles: number;
 };
 
+type ModelSize = {
+  width: number;
+  height: number;
+  depth: number;
+};
+
+type ArAxis = keyof ModelSize;
+
+type ArUnit = 'mm' | 'cm' | 'm';
+
+type ArScaleResult = {
+  axis: ArAxis;
+  expectedSize: ModelSize;
+  scale: number;
+  targetMeters: number;
+  unit: ArUnit;
+  value: number;
+};
+
+type ArCapabilityState = 'checking' | 'available' | 'unavailable' | 'launch-failed';
+
+type WebXrNavigator = Navigator & {
+  xr?: {
+    isSessionSupported?: (mode: 'immersive-ar') => Promise<boolean>;
+  };
+};
+
 type ViewerRuntime = {
   axesHelper: THREE.AxesHelper;
   controls: OrbitControls;
@@ -64,6 +92,9 @@ const EMPTY_STATS: ModelStats = {
   triangles: 0,
 };
 
+const BOUNDING_BOX_EPSILON = 0.000001;
+const DEFAULT_AR_TARGET_VALUE = '10';
+
 export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ViewerRuntime | null>(null);
@@ -75,14 +106,19 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
   const [stats, setStats] = useState<ModelStats>(EMPTY_STATS);
+  const [originalModelSize, setOriginalModelSize] = useState<ModelSize | null>(null);
   // Level 1 real-AR panel (native <model-viewer> AR, separate from the
   // shader-based AR Preview on kila606/ar-preview-demo). Off by default so
   // the extra <model-viewer> element only mounts when actually requested.
   const [arOpen, setArOpen] = useState(false);
-  // Hunyuan3D GLBs are normalized (no real-world scale), so AR placement is
-  // often the wrong size. This is a manual fudge factor for now, not a real
-  // fix — see model-viewer's `scale` attribute below.
+  // Hunyuan3D GLBs are normalized, so this frontend-only AR scale adjusts
+  // native <model-viewer> placement without changing the three.js preview.
   const [arScale, setArScale] = useState(1);
+  const [arTargetValue, setArTargetValue] = useState(DEFAULT_AR_TARGET_VALUE);
+  const [arTargetUnit, setArTargetUnit] = useState<ArUnit>('cm');
+  const [arTargetAxis, setArTargetAxis] = useState<ArAxis>('height');
+  const [arScaleResult, setArScaleResult] = useState<ArScaleResult | null>(null);
+  const [arScaleError, setArScaleError] = useState<string | null>(null);
   // iOS Quick Look needs a USDZ, which the backend only converts on demand
   // (see `usdzUrl` above). `resolvedIosSrc` is set once that fetch
   // succeeds, so re-clicking within the same session skips straight to
@@ -90,6 +126,10 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   const [resolvedIosSrc, setResolvedIosSrc] = useState<string | null>(null);
   const [iosUsdzState, setIosUsdzState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [iosUsdzErrorMessage, setIosUsdzErrorMessage] = useState<string | null>(null);
+  const [arCapabilityState, setArCapabilityState] = useState<ArCapabilityState>('checking');
+  const [arCapabilityMessage, setArCapabilityMessage] = useState<string | null>(null);
+  const [experimentalXrOpen, setExperimentalXrOpen] = useState(false);
+  const isIOS = isIOSDevice();
 
   useEffect(() => {
     materialModeRef.current = materialMode;
@@ -120,6 +160,7 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
       setIsLoading(Boolean(src));
       setError(null);
       setStats(EMPTY_STATS);
+      resetArScaleState();
       return;
     }
     const mount = container;
@@ -129,6 +170,7 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
     setIsLoading(true);
     setError(null);
     setStats(EMPTY_STATS);
+    resetArScaleState();
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x282828);
@@ -192,6 +234,7 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
         const model = gltf.scene;
         runtime.model = model;
         rememberOriginalMaterials(model, runtime.originalMaterials);
+        setOriginalModelSize(getOriginalModelSize(model));
         scene.add(model);
         runtime.resetView = frameModel(model, camera, controls, gridHelper, axesHelper);
         setStats(getModelStats(model));
@@ -242,16 +285,91 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
     };
   }, [src]);
 
+  useEffect(() => {
+    if (!arOpen || isIOS) {
+      setArCapabilityState('checking');
+      setArCapabilityMessage(null);
+      return;
+    }
+
+    let cancelled = false;
+    setArCapabilityState('checking');
+    setArCapabilityMessage('正在檢查 WebXR AR 支援狀態...');
+
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      setArCapabilityState('unavailable');
+      setArCapabilityMessage('目前環境無法檢查 WebXR AR 支援。');
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setArCapabilityState('unavailable');
+      setArCapabilityMessage('尺寸校正 AR（WebXR）需要 HTTPS 或 localhost 安全環境。');
+      return;
+    }
+
+    const xr = (navigator as WebXrNavigator).xr;
+    if (!xr?.isSessionSupported) {
+      setArCapabilityState('unavailable');
+      setArCapabilityMessage('此瀏覽器不支援 WebXR AR。請使用支援 ARCore 的 Android Chrome。');
+      return;
+    }
+
+    xr.isSessionSupported('immersive-ar')
+      .then((supported) => {
+        if (cancelled) {
+          return;
+        }
+        if (supported) {
+          setArCapabilityState('available');
+          setArCapabilityMessage('WebXR AR 可用。尺寸校正會套用目前的 AR scale。');
+        } else {
+          setArCapabilityState('unavailable');
+          setArCapabilityMessage('此裝置目前不支援 WebXR immersive-ar。請確認 Android Chrome、ARCore 與 HTTPS。');
+        }
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setArCapabilityState('unavailable');
+        setArCapabilityMessage('無法確認 WebXR AR 支援狀態。請確認 Android Chrome、ARCore 與 HTTPS。');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [arOpen, isIOS, src]);
+
   async function handleArButtonClick() {
     const modelViewer = arModelViewerRef.current as ModelViewerElement | null;
     if (!modelViewer) {
       return;
     }
 
-    // Android Scene Viewer only needs `src`, already set on the element —
-    // launch immediately, no conversion involved.
-    if (!isIOSDevice() || resolvedIosSrc) {
-      modelViewer.activateAR().catch(() => {});
+    if (!isIOS) {
+      if (arCapabilityState !== 'available' && arCapabilityState !== 'launch-failed') {
+        setArCapabilityState('unavailable');
+        setArCapabilityMessage('尺寸校正 AR（WebXR）目前不可用，因此不會改用 Scene Viewer。');
+        return;
+      }
+
+      try {
+        await modelViewer.activateAR();
+      } catch {
+        setArCapabilityState('launch-failed');
+        setArCapabilityMessage('WebXR AR 啟動失敗。請確認 Android Chrome、ARCore、HTTPS 與相機/AR 權限。');
+      }
+      return;
+    }
+
+    if (resolvedIosSrc) {
+      try {
+        await modelViewer.activateAR();
+      } catch {
+        setIosUsdzState('error');
+        setIosUsdzErrorMessage('iOS Quick Look 啟動失敗，請稍後再試。');
+      }
       return;
     }
 
@@ -287,6 +405,61 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
       setIosUsdzState('error');
       setIosUsdzErrorMessage(err instanceof Error ? err.message : 'USDZ 轉檔失敗，請稍後再試。');
     }
+  }
+
+  function resetArScaleState() {
+    setOriginalModelSize(null);
+    setArScale(1);
+    setArScaleResult(null);
+    setArScaleError(null);
+  }
+
+  function handleApplyArScale() {
+    const value = Number(arTargetValue);
+    if (!Number.isFinite(value) || value <= 0) {
+      setArScaleError('目標尺寸必須大於 0。');
+      return;
+    }
+
+    if (!originalModelSize) {
+      setArScaleError('GLB 尚未載入完成，無法套用 AR 尺寸。');
+      return;
+    }
+
+    const originalAxisSize = getAxisSize(originalModelSize, arTargetAxis);
+    if (!Number.isFinite(originalAxisSize) || originalAxisSize <= BOUNDING_BOX_EPSILON) {
+      setArScaleError('選取的 GLB 座標軸尺寸太小，無法計算 AR 縮放。');
+      return;
+    }
+
+    const targetMeters = convertToMeters(value, arTargetUnit);
+    const nextScale = targetMeters / originalAxisSize;
+    if (!Number.isFinite(nextScale) || nextScale <= 0) {
+      setArScaleError('AR 縮放計算失敗，請確認目標尺寸與模型尺寸。');
+      return;
+    }
+
+    const expectedSize = {
+      width: originalModelSize.width * nextScale,
+      height: originalModelSize.height * nextScale,
+      depth: originalModelSize.depth * nextScale,
+    };
+
+    if (!isValidModelSize(expectedSize)) {
+      setArScaleError('換算後尺寸無效，請確認目標尺寸與模型尺寸。');
+      return;
+    }
+
+    setArScale(nextScale);
+    setArScaleResult({
+      axis: arTargetAxis,
+      expectedSize,
+      scale: nextScale,
+      targetMeters,
+      unit: arTargetUnit,
+      value,
+    });
+    setArScaleError(null);
   }
 
   if (!src) {
@@ -336,19 +509,68 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
           {arOpen ? '關閉 AR 檢視' : '在 AR 中檢視'}
         </button>
         {arOpen && (
-          <label className="viewer-ar-scale">
-            AR 縮放（暫時手動調整，Hunyuan3D 模型無真實尺度）
-            <input
-              type="number"
-              step="0.1"
-              min="0.01"
-              value={arScale}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                setArScale(Number.isFinite(next) && next > 0 ? next : 1);
-              }}
-            />
-          </label>
+          <>
+            <p className="hint">
+              {isIOS
+                ? 'iOS 會使用 Quick Look；本階段不宣稱尺寸校正已完成實機驗證。'
+                : '尺寸校正 AR（WebXR）需要 Android Chrome、ARCore 與 HTTPS；目前是目標尺寸預覽，不是精密量測。'}
+            </p>
+            <div className="viewer-ar-scale">
+              <span>
+                GLB 座標尺寸（非真實世界量測）：W {formatMeters(originalModelSize?.width)} / H{' '}
+                {formatMeters(originalModelSize?.height)} / D {formatMeters(originalModelSize?.depth)}
+              </span>
+              <label>
+                目標尺寸
+                <input
+                  type="number"
+                  min="0.000001"
+                  step="0.1"
+                  value={arTargetValue}
+                  onChange={(event) => setArTargetValue(event.target.value)}
+                />
+              </label>
+              <label>
+                單位
+                <select
+                  value={arTargetUnit}
+                  onChange={(event) => setArTargetUnit(event.target.value as ArUnit)}
+                >
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                  <option value="m">m</option>
+                </select>
+              </label>
+              <label>
+                套用軸向
+                <select
+                  value={arTargetAxis}
+                  onChange={(event) => setArTargetAxis(event.target.value as ArAxis)}
+                >
+                  <option value="width">width (X)</option>
+                  <option value="height">height (Y)</option>
+                  <option value="depth">depth (Z)</option>
+                </select>
+              </label>
+              <button type="button" disabled={isLoading || !originalModelSize} onClick={handleApplyArScale}>
+                套用尺寸
+              </button>
+            </div>
+            {arScaleResult && (
+              <p className="hint">
+                AR scale {formatScale(arScaleResult.scale)}，預期尺寸：W{' '}
+                {formatMeters(arScaleResult.expectedSize.width)} / H{' '}
+                {formatMeters(arScaleResult.expectedSize.height)} / D{' '}
+                {formatMeters(arScaleResult.expectedSize.depth)}
+              </p>
+            )}
+            {arScaleError && <p className="hint error">{arScaleError}</p>}
+            {!isIOS && arCapabilityMessage && (
+              <p className={`hint ${arCapabilityState === 'available' ? '' : 'error'}`.trim()}>
+                {arCapabilityMessage}
+              </p>
+            )}
+          </>
         )}
         {arOpen && (
           <>
@@ -358,7 +580,8 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
               src={src}
               ios-src={resolvedIosSrc ?? undefined}
               ar
-              ar-modes="scene-viewer quick-look"
+              ar-modes="webxr quick-look"
+              ar-scale="fixed"
               camera-controls
               scale={`${arScale} ${arScale} ${arScale}`}
               alt="Generated 3D asset in AR"
@@ -366,17 +589,49 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
             <button
               type="button"
               className="viewer-ar-button"
-              disabled={iosUsdzState === 'loading'}
+              disabled={
+                iosUsdzState === 'loading' ||
+                (!isIOS && (arCapabilityState === 'checking' || arCapabilityState === 'unavailable'))
+              }
               onClick={handleArButtonClick}
             >
-              {iosUsdzState === 'loading' ? 'USDZ 轉檔中...' : '在 AR 中檢視'}
+              {iosUsdzState === 'loading'
+                ? 'USDZ 轉檔中...'
+                : isIOS
+                  ? '用 Quick Look 檢視'
+                  : arCapabilityState === 'checking'
+                    ? '檢查 WebXR 中...'
+                    : arCapabilityState === 'launch-failed'
+                      ? '重新嘗試 WebXR AR'
+                      : '用 WebXR 尺寸校正 AR 檢視'}
             </button>
             {iosUsdzState === 'error' && iosUsdzErrorMessage && (
               <p className="hint error">{iosUsdzErrorMessage}</p>
             )}
+            {!isIOS && (
+              <>
+                <button
+                  type="button"
+                  className="viewer-ar-button secondary"
+                  onClick={() => setExperimentalXrOpen(true)}
+                >
+                  實驗：手動放置 WebXR
+                </button>
+                <p className="hint">
+                  實驗模式會直接使用 Three.js WebXR，等待 Surface Hit 穩定後才允許確認放置。
+                </p>
+              </>
+            )}
           </>
         )}
       </div>
+      {experimentalXrOpen && !isIOS && (
+        <ExperimentalWebXRViewer
+          src={src}
+          arScale={arScale}
+          onClose={() => setExperimentalXrOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -474,6 +729,61 @@ function getModelStats(model: THREE.Object3D): ModelStats {
 
   stats.triangles = Math.round(stats.triangles);
   return stats;
+}
+
+function getOriginalModelSize(model: THREE.Object3D): ModelSize {
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  return {
+    width: size.x,
+    height: size.y,
+    depth: size.z,
+  };
+}
+
+function getAxisSize(size: ModelSize, axis: ArAxis): number {
+  return size[axis];
+}
+
+function convertToMeters(value: number, unit: ArUnit): number {
+  if (unit === 'mm') {
+    return value / 1000;
+  }
+  if (unit === 'cm') {
+    return value / 100;
+  }
+  return value;
+}
+
+function isValidModelSize(size: ModelSize): boolean {
+  return [size.width, size.height, size.depth].every((value) => Number.isFinite(value) && value >= 0);
+}
+
+function formatMeters(value: number | undefined): string {
+  if (!Number.isFinite(value)) {
+    return 'loading';
+  }
+  return `${formatNumber(value)} m`;
+}
+
+function formatScale(value: number): string {
+  return formatNumber(value);
+}
+
+function formatNumber(value: number | undefined): string {
+  if (!Number.isFinite(value)) {
+    return 'loading';
+  }
+  const safeValue = value as number;
+  if (safeValue === 0) {
+    return '0';
+  }
+  if (Math.abs(safeValue) < 0.001 || Math.abs(safeValue) >= 1000) {
+    return safeValue.toExponential(3);
+  }
+  return safeValue.toLocaleString(undefined, {
+    maximumFractionDigits: 6,
+  });
 }
 
 function frameModel(

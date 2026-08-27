@@ -1,6 +1,6 @@
 // Minimal JSX typing for the <model-viewer> custom element from
 // @google/model-viewer, used by components/ModelViewer.tsx for the
-// Level 1 real-AR panel (native ar-modes="scene-viewer quick-look").
+// Level 1 real-AR panel (WebXR size calibration plus iOS Quick Look).
 // @google/model-viewer does not ship its own React/JSX types, so this
 // declares just the attributes this project actually uses.
 //
@@ -17,6 +17,7 @@ interface ModelViewerJSX
   'ios-src'?: string;
   ar?: boolean;
   'ar-modes'?: string;
+  'ar-scale'?: string;
   'camera-controls'?: boolean;
   scale?: string;
   alt?: string;
