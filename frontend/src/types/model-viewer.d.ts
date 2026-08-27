@@ -17,9 +17,9 @@ interface ModelViewerJSX
   'ios-src'?: string;
   ar?: boolean;
   'ar-modes'?: string;
-  'ar-scale'?: string;
   'camera-controls'?: boolean;
   scale?: string;
+  'ar-scale'?: 'auto' | 'fixed';
   alt?: string;
 }
 

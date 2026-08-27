@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+import trimesh
 from fastapi.testclient import TestClient
 
 from app.asset_catalog import AssetRecord
@@ -322,6 +323,228 @@ def test_model_delete_does_not_delete_reference_or_other_variant(client: TestCli
     assert client.app.state.asset_catalog.get_asset(upload["image_id"]) is not None
     assert client.app.state.asset_catalog.get_asset(textured.asset_id) is not None
     assert textured_path.exists()
+
+
+def _register_calibrated_child(client: TestClient, parent_asset_id: str, filename: str) -> AssetRecord:
+    # Phase 3/4's baking service doesn't exist yet -- this simulates its
+    # end result (a second model asset whose parent_asset_id points back at
+    # the raw GLB it was calibrated from) directly via upsert_asset(),
+    # exactly like register_model_file() does internally.
+    catalog = client.app.state.asset_catalog
+    path = client.app.state.storage.models_dir / filename
+    path.write_bytes(GLB_BYTES)
+    return catalog.upsert_asset(
+        AssetRecord(
+            asset_id=str(uuid.uuid4()),
+            asset_type="model",
+            filename=filename,
+            relative_path=catalog.relative_path_for(path),
+            media_type="model/gltf-binary",
+            source="calibrated",
+            created_at="2026-01-01T00:00:00+00:00",
+            deleted_at=None,
+            size_bytes=len(GLB_BYTES),
+            status="available",
+            parent_asset_id=parent_asset_id,
+        )
+    )
+
+
+def test_model_with_calibrated_child_cannot_be_deleted(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw_path = client.app.state.storage.models_dir / "raw.glb"
+    raw_path.write_bytes(GLB_BYTES)
+    raw = client.app.state.storage.register_model_file(
+        raw_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+    calibrated = _register_calibrated_child(client, raw.asset_id, "calibrated.glb")
+    client.post(f"/api/library/assets/{raw.asset_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{raw.asset_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_in_use"
+    assert response.json()["error"]["details"]["dependents"][0]["asset_id"] == calibrated.asset_id
+
+
+def test_model_without_calibrated_child_can_be_deleted(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    model_path = client.app.state.storage.models_dir / "no-child.glb"
+    model_path.write_bytes(GLB_BYTES)
+    model = client.app.state.storage.register_model_file(
+        model_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+    client.post(f"/api/library/assets/{model.asset_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{model.asset_id}")
+
+    assert response.status_code == 200
+    assert client.app.state.asset_catalog.get_asset(model.asset_id) is None
+
+
+def test_calibrated_child_itself_can_be_deleted(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw_path = client.app.state.storage.models_dir / "raw2.glb"
+    raw_path.write_bytes(GLB_BYTES)
+    raw = client.app.state.storage.register_model_file(
+        raw_path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+    calibrated = _register_calibrated_child(client, raw.asset_id, "calibrated2.glb")
+    client.post(f"/api/library/assets/{calibrated.asset_id}/trash")
+
+    response = client.delete(f"/api/library/assets/{calibrated.asset_id}")
+
+    assert response.status_code == 200
+    assert client.app.state.asset_catalog.get_asset(calibrated.asset_id) is None
+    # Deleting the calibrated child must never cascade back onto its raw
+    # source -- the dependency direction only blocks parent -> child.
+    assert client.app.state.asset_catalog.get_asset(raw.asset_id) is not None
+
+
+def _register_real_model_asset(client: TestClient, upload: dict, filename: str) -> AssetRecord:
+    # Unlike _register_model_asset() above (which writes fake GLB_BYTES),
+    # the calibrate endpoint actually parses the file with trimesh -- these
+    # tests need a real, trimesh-loadable GLB, not just magic bytes.
+    path = client.app.state.storage.models_dir / filename
+    trimesh.creation.box(extents=[2.0, 1.0, 0.5]).export(path)
+    return client.app.state.storage.register_model_file(
+        path,
+        source="generated",
+        pipeline="single",
+        model_variant="single",
+        related_job_id="job-1",
+        reference_image_id=upload["image_id"],
+    )
+
+
+def test_calibrate_endpoint_creates_new_asset_with_parent_asset_id(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+
+    response = client.post(
+        f"/api/library/assets/{raw.asset_id}/calibrate",
+        json={"target_max_dimension_cm": 15.0},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["parent_asset_id"] == raw.asset_id
+    assert data["asset_id"] != raw.asset_id
+
+    raw_detail = client.get(f"/api/library/assets/{raw.asset_id}").json()
+    assert raw_detail["calibrated_asset_ids"] == [data["asset_id"]]
+
+
+def test_recalibrating_trashes_previous_calibrated_asset(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+
+    first = client.post(
+        f"/api/library/assets/{raw.asset_id}/calibrate",
+        json={"target_max_dimension_cm": 10.0},
+    ).json()
+    second = client.post(
+        f"/api/library/assets/{raw.asset_id}/calibrate",
+        json={"target_max_dimension_cm": 20.0},
+    ).json()
+
+    assert first["asset_id"] != second["asset_id"]
+    first_after = client.app.state.asset_catalog.get_asset(first["asset_id"])
+    assert first_after.deleted_at is not None  # trashed, not deleted -- recoverable
+    second_after = client.app.state.asset_catalog.get_asset(second["asset_id"])
+    assert second_after.deleted_at is None
+
+    raw_detail = client.get(f"/api/library/assets/{raw.asset_id}").json()
+    assert raw_detail["calibrated_asset_ids"] == [second["asset_id"]]
+
+
+def test_calibrate_missing_asset_returns_404(client: TestClient) -> None:
+    response = client.post(
+        "/api/library/assets/missing/calibrate",
+        json={"target_max_dimension_cm": 10.0},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "asset_not_found"
+
+
+def test_calibrate_non_model_asset_returns_400(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+
+    response = client.post(
+        f"/api/library/assets/{upload['image_id']}/calibrate",
+        json={"target_max_dimension_cm": 10.0},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_asset_type"
+
+
+def test_calibrate_invalid_target_returns_400(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+
+    response = client.post(
+        f"/api/library/assets/{raw.asset_id}/calibrate",
+        json={"target_max_dimension_cm": 0.0},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_target_dimension"
+
+
+def test_calibrated_asset_appears_in_library_list_with_parent_asset_id(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+    calibrated = client.post(
+        f"/api/library/assets/{raw.asset_id}/calibrate",
+        json={"target_max_dimension_cm": 15.0},
+    ).json()
+
+    listing = client.get("/api/library/assets?type=model").json()
+
+    items_by_id = {item["asset_id"]: item for item in listing["items"]}
+    assert items_by_id[raw.asset_id]["calibrated_asset_ids"] == [calibrated["asset_id"]]
+    assert items_by_id[calibrated["asset_id"]]["parent_asset_id"] == raw.asset_id
+    assert items_by_id[calibrated["asset_id"]]["calibrated_asset_ids"] == []
+
+
+def test_get_stl_endpoint_returns_file(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+    client.post(f"/api/library/assets/{raw.asset_id}/calibrate", json={"target_max_dimension_cm": 15.0})
+
+    response = client.get(f"/api/library/assets/{raw.asset_id}/stl")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "model/stl"
+    reloaded = trimesh.load_mesh(trimesh.util.wrap_as_stream(response.content), file_type="stl")
+    assert abs(max(reloaded.bounds[1] - reloaded.bounds[0]) - 150.0) < 0.01
+
+
+def test_get_stl_endpoint_without_calibration_returns_409(client: TestClient) -> None:
+    upload = _upload(client, "asset.png")
+    raw = _register_real_model_asset(client, upload, "raw.glb")
+
+    response = client.get(f"/api/library/assets/{raw.asset_id}/stl")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "asset_not_calibrated"
 
 
 def test_permission_error_keeps_db_record(client: TestClient, monkeypatch) -> None:

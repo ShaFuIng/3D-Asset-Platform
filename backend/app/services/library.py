@@ -6,7 +6,7 @@ from ..errors import ApiError
 from ..schemas import DeleteLibraryAssetResponse, LibraryAssetResponse
 
 
-def asset_response(asset: AssetRecord) -> LibraryAssetResponse:
+def asset_response(catalog: AssetCatalog, asset: AssetRecord) -> LibraryAssetResponse:
     return LibraryAssetResponse(
         asset_id=asset.asset_id,
         asset_type=asset.asset_type,
@@ -25,6 +25,12 @@ def asset_response(asset: AssetRecord) -> LibraryAssetResponse:
         reference_image_id=asset.reference_image_id,
         view_name=asset.view_name,
         original_filename=asset.original_filename,
+        parent_asset_id=asset.parent_asset_id,
+        calibrated_asset_ids=[
+            child.asset_id
+            for child in catalog.find_derived_assets(asset.asset_id)
+            if child.deleted_at is None
+        ],
     )
 
 
@@ -51,7 +57,7 @@ def trash_asset(catalog: AssetCatalog, asset_id: str) -> LibraryAssetResponse:
     asset = catalog.trash_asset(asset_id)
     if asset is None:
         raise ApiError(404, "asset_not_found", "Asset was not found.")
-    return asset_response(asset)
+    return asset_response(catalog, asset)
 
 
 def restore_asset(catalog: AssetCatalog, asset_id: str) -> LibraryAssetResponse:
@@ -60,7 +66,7 @@ def restore_asset(catalog: AssetCatalog, asset_id: str) -> LibraryAssetResponse:
     restored = catalog.restore_asset(asset_id)
     if restored is None:
         raise ApiError(404, "asset_not_found", "Asset was not found.")
-    return asset_response(restored)
+    return asset_response(catalog, restored)
 
 
 async def permanently_delete_asset(
@@ -94,13 +100,13 @@ async def permanently_delete_asset(
 
 
 def _ensure_no_dependencies(catalog: AssetCatalog, asset: AssetRecord) -> None:
-    if asset.asset_type != "image":
+    if asset.asset_type == "image":
+        candidates = [*catalog.find_children(asset.asset_id), *catalog.find_references(asset.asset_id)]
+    elif asset.asset_type == "model":
+        candidates = catalog.find_derived_assets(asset.asset_id)
+    else:
         return
-    dependents = [
-        dependent
-        for dependent in [*catalog.find_children(asset.asset_id), *catalog.find_references(asset.asset_id)]
-        if dependent.asset_id != asset.asset_id
-    ]
+    dependents = [dependent for dependent in candidates if dependent.asset_id != asset.asset_id]
     if dependents:
         raise ApiError(
             409,

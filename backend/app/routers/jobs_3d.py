@@ -48,6 +48,7 @@ async def create_3d_job(request: Request, payload: Create3DJobRequest) -> Create
         job_id=job.job_id,
         status=job.status,
         status_url=f"/api/3d/jobs/{job.job_id}",
+        asset_id=job.asset_id,
     )
 
 
@@ -113,4 +114,5 @@ def _job_response(job) -> JobResponse:
         message=job.message,
         prompt_id=job.prompt_id,
         result=result,
+        asset_id=job.asset_id,
     )

@@ -5,6 +5,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ExperimentalWebXRViewer } from './ExperimentalWebXRViewer';
 // Registers the <model-viewer> custom element used by the "View in AR" panel below.
 import '@google/model-viewer';
+import { ApiClientError, calibrateAsset, resolveApiUrl } from '../api/client';
+import type { LibraryAsset } from '../types/api';
 
 /*
  * Multi-directional lighting and inspection modes are adapted from
@@ -24,7 +26,36 @@ type ModelViewerProps = {
    * AR scale remains in effect.
    */
   usdzUrl?: string;
+  /**
+   * The *raw* library asset's id — used to call the calibrate/STL
+   * endpoints regardless of whether `src` above currently points at the
+   * raw GLB or an already-calibrated one. Calibration status is fetched
+   * by the caller (see useAssetCalibration), not by this component —
+   * ModelViewer stays purely props-driven.
+   */
+  assetId?: string;
+  /** Whether `src` is currently showing a calibrated (real-world-scale) GLB. */
+  isCalibrated?: boolean;
+  /** Called after a successful calibrate call, so the caller can refresh
+   * its own calibration state and hand back a new `src`/`isCalibrated`. */
+  onCalibrated?: (calibrated: LibraryAsset) => void;
 };
+
+const CALIBRATION_PRESETS = [
+  { label: '小', cm: 5 },
+  { label: '中', cm: 15 },
+  { label: '大', cm: 30 },
+];
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return '';
+  }
+  if (error instanceof ApiClientError || error instanceof Error) {
+    return error.message;
+  }
+  return '校正失敗，請稍後再試。';
+}
 
 // model-viewer's element type isn't exported in a way our JSX declaration
 // can reuse directly; this is just enough to call the one imperative method
@@ -95,7 +126,7 @@ const EMPTY_STATS: ModelStats = {
 const BOUNDING_BOX_EPSILON = 0.000001;
 const DEFAULT_AR_TARGET_VALUE = '10';
 
-export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
+export function ModelViewer({ src, usdzUrl, assetId, isCalibrated, onCalibrated }: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ViewerRuntime | null>(null);
   const materialModeRef = useRef<MaterialMode>('original');
@@ -111,14 +142,19 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   // shader-based AR Preview on kila606/ar-preview-demo). Off by default so
   // the extra <model-viewer> element only mounts when actually requested.
   const [arOpen, setArOpen] = useState(false);
-  // Hunyuan3D GLBs are normalized, so this frontend-only AR scale adjusts
-  // native <model-viewer> placement without changing the three.js preview.
+  // Hunyuan3D GLBs are normalized, so this frontend-only runtime scale is
+  // only an experimental WebXR preview for raw, uncalibrated GLBs.
   const [arScale, setArScale] = useState(1);
   const [arTargetValue, setArTargetValue] = useState(DEFAULT_AR_TARGET_VALUE);
   const [arTargetUnit, setArTargetUnit] = useState<ArUnit>('cm');
   const [arTargetAxis, setArTargetAxis] = useState<ArAxis>('height');
   const [arScaleResult, setArScaleResult] = useState<ArScaleResult | null>(null);
   const [arScaleError, setArScaleError] = useState<string | null>(null);
+  // Real-world-size calibration: persists a baked GLB on the backend. Once
+  // calibrated, AR/WebXR runtime scale must stay 1 to avoid double scaling.
+  const [targetCm, setTargetCm] = useState(CALIBRATION_PRESETS[1].cm);
+  const [isSaving, setIsSaving] = useState(false);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
   // iOS Quick Look needs a USDZ, which the backend only converts on demand
   // (see `usdzUrl` above). `resolvedIosSrc` is set once that fetch
   // succeeds, so re-clicking within the same session skips straight to
@@ -322,7 +358,11 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
         }
         if (supported) {
           setArCapabilityState('available');
-          setArCapabilityMessage('WebXR AR 可用。尺寸校正會套用目前的 AR scale。');
+          setArCapabilityMessage(
+            isCalibrated
+              ? 'WebXR AR 可用。校正後 GLB 會以 runtime scale 1 顯示。'
+              : 'WebXR AR 可用。未校正模型僅可用實驗性預覽比例，不代表已保存真實尺寸。',
+          );
         } else {
           setArCapabilityState('unavailable');
           setArCapabilityMessage('此裝置目前不支援 WebXR immersive-ar。請確認 Android Chrome、ARCore 與 HTTPS。');
@@ -339,7 +379,23 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
     return () => {
       cancelled = true;
     };
-  }, [arOpen, isIOS, src]);
+  }, [arOpen, isCalibrated, isIOS, src]);
+
+  async function handleSaveCalibration() {
+    if (!assetId || !Number.isFinite(targetCm) || targetCm <= 0) {
+      return;
+    }
+    setIsSaving(true);
+    setCalibrationError(null);
+    try {
+      const calibrated = await calibrateAsset(assetId, targetCm);
+      onCalibrated?.(calibrated);
+    } catch (err) {
+      setCalibrationError(getErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function handleArButtonClick() {
     const modelViewer = arModelViewerRef.current as ModelViewerElement | null;
@@ -415,6 +471,11 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
   }
 
   function handleApplyArScale() {
+    if (isCalibrated) {
+      setArScaleError('此模型已校正；實驗 WebXR 會使用 runtime scale 1，避免重複縮放。');
+      return;
+    }
+
     const value = Number(arTargetValue);
     if (!Number.isFinite(value) || value <= 0) {
       setArScaleError('目標尺寸必須大於 0。');
@@ -462,6 +523,8 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
     setArScaleError(null);
   }
 
+  const experimentalRuntimeScale = isCalibrated ? 1 : arScale;
+
   if (!src) {
     return (
       <div className="viewer-placeholder">
@@ -504,6 +567,51 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
         {error && <div className="viewer-error">{error}</div>}
         <div ref={containerRef} className="three-canvas" aria-label="Generated 3D asset preview" />
       </div>
+      {assetId && (
+        <div className="viewer-calibration-panel" aria-label="Real-world size calibration">
+          <span className="badge" data-kind={isCalibrated ? 'succeeded' : 'unknown'}>
+            {isCalibrated ? '已校正' : '尚未校正'}
+          </span>
+          <div className="calibration-presets" role="group" aria-label="Calibration presets">
+            {CALIBRATION_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                data-selected={targetCm === preset.cm}
+                onClick={() => setTargetCm(preset.cm)}
+              >
+                {preset.label}（{preset.cm}cm）
+              </button>
+            ))}
+          </div>
+          <label className="calibration-custom-input">
+            自訂最長邊（公分）
+            <input
+              type="number"
+              step="0.1"
+              min="0.1"
+              value={targetCm}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setTargetCm(Number.isFinite(next) ? next : CALIBRATION_PRESETS[1].cm);
+              }}
+            />
+          </label>
+          <button type="button" disabled={isSaving} onClick={() => void handleSaveCalibration()}>
+            {isSaving ? '校正中...' : '儲存並校正'}
+          </button>
+          {calibrationError && <p className="hint error">{calibrationError}</p>}
+          {isCalibrated && (
+            <a
+              className="download-link"
+              href={resolveApiUrl(`/api/library/assets/${assetId}/stl`)}
+              download
+            >
+              下載 STL
+            </a>
+          )}
+        </div>
+      )}
       <div className="viewer-ar-panel" aria-label="Real-device AR preview (native model-viewer)">
         <button type="button" onClick={() => setArOpen((current) => !current)}>
           {arOpen ? '關閉 AR 檢視' : '在 AR 中檢視'}
@@ -512,53 +620,59 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
           <>
             <p className="hint">
               {isIOS
-                ? 'iOS 會使用 Quick Look；本階段不宣稱尺寸校正已完成實機驗證。'
-                : '尺寸校正 AR（WebXR）需要 Android Chrome、ARCore 與 HTTPS；目前是目標尺寸預覽，不是精密量測。'}
+                ? 'iOS 會使用 Quick Look；校正後模型以已保存 GLB 尺寸顯示。'
+                : isCalibrated
+                  ? 'WebXR 會使用校正後 GLB，runtime scale 固定為 1，避免重複縮放。'
+                  : '未校正模型可使用實驗性預覽比例；這不是已保存的真實尺寸。'}
             </p>
             <div className="viewer-ar-scale">
               <span>
                 GLB 座標尺寸（非真實世界量測）：W {formatMeters(originalModelSize?.width)} / H{' '}
                 {formatMeters(originalModelSize?.height)} / D {formatMeters(originalModelSize?.depth)}
               </span>
-              <label>
-                目標尺寸
-                <input
-                  type="number"
-                  min="0.000001"
-                  step="0.1"
-                  value={arTargetValue}
-                  onChange={(event) => setArTargetValue(event.target.value)}
-                />
-              </label>
-              <label>
-                單位
-                <select
-                  value={arTargetUnit}
-                  onChange={(event) => setArTargetUnit(event.target.value as ArUnit)}
-                >
-                  <option value="mm">mm</option>
-                  <option value="cm">cm</option>
-                  <option value="m">m</option>
-                </select>
-              </label>
-              <label>
-                套用軸向
-                <select
-                  value={arTargetAxis}
-                  onChange={(event) => setArTargetAxis(event.target.value as ArAxis)}
-                >
-                  <option value="width">width (X)</option>
-                  <option value="height">height (Y)</option>
-                  <option value="depth">depth (Z)</option>
-                </select>
-              </label>
-              <button type="button" disabled={isLoading || !originalModelSize} onClick={handleApplyArScale}>
-                套用尺寸
-              </button>
+              {!isCalibrated && (
+                <>
+                  <label>
+                    實驗性預覽目標尺寸
+                    <input
+                      type="number"
+                      min="0.000001"
+                      step="0.1"
+                      value={arTargetValue}
+                      onChange={(event) => setArTargetValue(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    單位
+                    <select
+                      value={arTargetUnit}
+                      onChange={(event) => setArTargetUnit(event.target.value as ArUnit)}
+                    >
+                      <option value="mm">mm</option>
+                      <option value="cm">cm</option>
+                      <option value="m">m</option>
+                    </select>
+                  </label>
+                  <label>
+                    套用軸向
+                    <select
+                      value={arTargetAxis}
+                      onChange={(event) => setArTargetAxis(event.target.value as ArAxis)}
+                    >
+                      <option value="width">width (X)</option>
+                      <option value="height">height (Y)</option>
+                      <option value="depth">depth (Z)</option>
+                    </select>
+                  </label>
+                  <button type="button" disabled={isLoading || !originalModelSize} onClick={handleApplyArScale}>
+                    套用實驗比例
+                  </button>
+                </>
+              )}
             </div>
             {arScaleResult && (
               <p className="hint">
-                AR scale {formatScale(arScaleResult.scale)}，預期尺寸：W{' '}
+                實驗性 WebXR runtime scale {formatScale(arScaleResult.scale)}，預期尺寸：W{' '}
                 {formatMeters(arScaleResult.expectedSize.width)} / H{' '}
                 {formatMeters(arScaleResult.expectedSize.height)} / D{' '}
                 {formatMeters(arScaleResult.expectedSize.depth)}
@@ -581,9 +695,9 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
               ios-src={resolvedIosSrc ?? undefined}
               ar
               ar-modes="webxr quick-look"
-              ar-scale="fixed"
               camera-controls
-              scale={`${arScale} ${arScale} ${arScale}`}
+              scale="1 1 1"
+              ar-scale={isCalibrated ? 'fixed' : undefined}
               alt="Generated 3D asset in AR"
             />
             <button
@@ -628,7 +742,7 @@ export function ModelViewer({ src, usdzUrl }: ModelViewerProps) {
       {experimentalXrOpen && !isIOS && (
         <ExperimentalWebXRViewer
           src={src}
-          arScale={arScale}
+          arScale={experimentalRuntimeScale}
           onClose={() => setExperimentalXrOpen(false)}
         />
       )}

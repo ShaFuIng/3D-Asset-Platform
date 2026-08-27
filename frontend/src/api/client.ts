@@ -247,6 +247,19 @@ export async function restoreLibraryAsset(assetId: string, signal?: AbortSignal)
   });
 }
 
+export async function calibrateAsset(
+  assetId: string,
+  targetMaxDimensionCm: number,
+  signal?: AbortSignal,
+): Promise<LibraryAsset> {
+  return requestJson(`/api/library/assets/${encodeURIComponent(assetId)}/calibrate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_max_dimension_cm: targetMaxDimensionCm }),
+    signal,
+  });
+}
+
 export async function deleteLibraryAsset(
   assetId: string,
   signal?: AbortSignal,
@@ -341,10 +354,12 @@ type MultiviewModelJobResponseBody = {
   geometry_model: {
     available: boolean;
     download_url: string | null;
+    asset_id: string | null;
   };
   textured_model: {
     available: boolean;
     download_url: string | null;
+    asset_id: string | null;
   };
 };
 
@@ -410,10 +425,12 @@ function toMultiviewModelJob(data: MultiviewModelJobResponseBody): MultiviewMode
     geometryModel: {
       available: data.geometry_model.available,
       downloadUrl: data.geometry_model.download_url,
+      assetId: data.geometry_model.asset_id,
     },
     texturedModel: {
       available: data.textured_model.available,
       downloadUrl: data.textured_model.download_url,
+      assetId: data.textured_model.asset_id,
     },
   };
 }

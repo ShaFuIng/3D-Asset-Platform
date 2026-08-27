@@ -6,3 +6,5 @@ openai==2.11.0
 python-multipart==0.0.20
 Pillow==12.1.0
 pytest==9.0.2
+trimesh==5.0.0
+numpy==2.2.6

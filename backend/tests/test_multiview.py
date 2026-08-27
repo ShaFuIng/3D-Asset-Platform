@@ -215,6 +215,21 @@ def test_model_job_rejects_pending_candidate(client: TestClient, image_id: str) 
     assert response.json()["error"]["code"] == "candidate_pending"
 
 
+def test_model_job_not_started_returns_null_asset_ids(client: TestClient, image_id: str) -> None:
+    # Before start_model_job() ever runs, MultiviewJob.model_job is None --
+    # _model_job_response()'s early-state branch must report both asset_ids
+    # as null rather than erroring or guessing a placeholder.
+    prepare_multiview_app(client)
+    created = client.post("/api/multiview/jobs", json={"reference_image_id": image_id}).json()
+
+    response = client.get(f"/api/multiview/jobs/{created['job_id']}/model-job")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["geometry_model"]["asset_id"] is None
+    assert data["textured_model"]["asset_id"] is None
+
+
 def test_multiview_model_downloads(client: TestClient, image_id: str) -> None:
     prepare_multiview_app(client)
 
@@ -511,6 +526,17 @@ def test_run_multiview_model_job_saves_two_models(client: TestClient, image_id: 
     assert {model.model_variant for model in models} == {"geometry", "textured"}
     assert {model.pipeline for model in models} == {"multiview"}
     assert {model.related_job_id for model in models} == {job.job_id}
+    # geometry_asset_id/textured_asset_id must be the *real* asset_id
+    # register_model_file() assigned each of the two models in the catalog,
+    # not placeholders -- Phase 4's calibration feature keys off these.
+    geometry_asset = next(model for model in models if model.model_variant == "geometry")
+    textured_asset = next(model for model in models if model.model_variant == "textured")
+    assert job.model_job.geometry_asset_id == geometry_asset.asset_id
+    assert job.model_job.textured_asset_id == textured_asset.asset_id
+    response = client.get(f"/api/multiview/jobs/{job.job_id}/model-job")
+    data = response.json()
+    assert data["geometry_model"]["asset_id"] == geometry_asset.asset_id
+    assert data["textured_model"]["asset_id"] == textured_asset.asset_id
 
 
 def test_run_multiview_model_job_keeps_geometry_asset_when_textured_download_fails(

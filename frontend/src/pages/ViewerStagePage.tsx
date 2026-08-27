@@ -3,6 +3,7 @@ import { ModelViewer } from '../components/ModelViewer';
 import { StageShell } from '../components/StageShell';
 import { TechnicalDetails } from '../components/TechnicalDetails';
 import { useWorkspace } from '../context/WorkspaceContext';
+import { useAssetCalibration } from '../hooks/useAssetCalibration';
 import { findRoutedJob, parsePipeline } from './routedJob';
 import { resolveApiUrl } from '../api/client';
 
@@ -18,6 +19,24 @@ export function ViewerStagePage() {
     pipeline && jobId
       ? findRoutedJob({ pipeline, jobId, images, singleJobsByImageId, multiviewByImageId })
       : null;
+
+  // Computed unconditionally (before the early returns below) so the
+  // useAssetCalibration() hook call that follows always runs in the same
+  // order across renders, regardless of which pipeline/branch ends up
+  // rendering -- each raw asset (single GLB, or geometry/textured
+  // individually) has its own independent calibration state (Phase 2/4),
+  // so switching activeModelKind naturally re-queries via the assetId change.
+  let inspectAssetId: string | undefined;
+  if (routed?.pipeline === 'single') {
+    inspectAssetId = routed.entry.job?.asset_id ?? undefined;
+  } else if (routed?.pipeline === 'multiview') {
+    const modelJob = routed.workspace.modelJob;
+    inspectAssetId =
+      (routed.workspace.activeModelKind === 'textured'
+        ? modelJob?.texturedModel.assetId ?? modelJob?.geometryModel.assetId
+        : modelJob?.geometryModel.assetId ?? modelJob?.texturedModel.assetId) ?? undefined;
+  }
+  const calibration = useAssetCalibration(inspectAssetId);
 
   if (!routed) {
     return (
@@ -64,8 +83,19 @@ export function ViewerStagePage() {
               {modelUrl ? 'Ready' : 'Unavailable'}
             </span>
           </div>
+          {calibration.error && <p className="hint error">{calibration.error}</p>}
           <div className="model-preview">
-            <ModelViewer src={modelUrl} usdzUrl={usdzUrl} />
+            <ModelViewer
+              src={
+                calibration.calibratedAsset?.status === 'available'
+                  ? resolveApiUrl(calibration.calibratedAsset.content_url)
+                  : modelUrl
+              }
+              usdzUrl={usdzUrl}
+              assetId={inspectAssetId}
+              isCalibrated={Boolean(calibration.calibratedAsset)}
+              onCalibrated={() => void calibration.refresh()}
+            />
           </div>
           <div className="model-downloads">
             {modelUrl ? (
@@ -143,8 +173,18 @@ export function ViewerStagePage() {
           </button>
         </div>
 
+        {calibration.error && <p className="hint error">{calibration.error}</p>}
         <div className="model-preview">
-          <ModelViewer src={activeModelUrl ?? undefined} />
+          <ModelViewer
+            src={
+              calibration.calibratedAsset?.status === 'available'
+                ? resolveApiUrl(calibration.calibratedAsset.content_url)
+                : activeModelUrl ?? undefined
+            }
+            assetId={inspectAssetId}
+            isCalibrated={Boolean(calibration.calibratedAsset)}
+            onCalibrated={() => void calibration.refresh()}
+          />
         </div>
 
         <div className="model-downloads">

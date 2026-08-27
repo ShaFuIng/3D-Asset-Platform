@@ -13,6 +13,7 @@ import { ImageLightbox, type LightboxImage } from '../components/ImageLightbox';
 import { ModelViewer } from '../components/ModelViewer';
 import { TechnicalDetails } from '../components/TechnicalDetails';
 import { useWorkspace } from '../context/WorkspaceContext';
+import { useAssetCalibration } from '../hooks/useAssetCalibration';
 import type {
   ImageAsset,
   ImageSource,
@@ -71,6 +72,9 @@ export function LibraryPage() {
   const [referencePreviewAsset, setReferencePreviewAsset] = useState<LibraryAsset | null>(null);
   const mutationLockRef = useRef<Set<string>>(new Set());
   const requestSeqRef = useRef(0);
+  const calibration = useAssetCalibration(
+    modelAsset?.asset_type === 'model' ? modelAsset.asset_id : undefined,
+  );
 
   const query = createQuery(tab, { page, sort, source, pipeline, search });
   const fetchKey = JSON.stringify(query);
@@ -420,13 +424,23 @@ export function LibraryPage() {
               ×
             </button>
             <h3>{modelAsset.filename}</h3>
+            {calibration.error && <p className="hint error">{calibration.error}</p>}
             <ModelViewer
-              src={modelAsset.status === 'available' ? resolveApiUrl(modelAsset.content_url) : undefined}
+              src={
+                calibration.calibratedAsset?.status === 'available'
+                  ? resolveApiUrl(calibration.calibratedAsset.content_url)
+                  : modelAsset.status === 'available'
+                    ? resolveApiUrl(modelAsset.content_url)
+                    : undefined
+              }
               usdzUrl={
                 modelAsset.status === 'available'
                   ? resolveApiUrl(`/api/library/assets/${modelAsset.asset_id}/usdz`)
                   : undefined
               }
+              assetId={modelAsset.asset_type === 'model' ? modelAsset.asset_id : undefined}
+              isCalibrated={Boolean(calibration.calibratedAsset)}
+              onCalibrated={() => void calibration.refresh()}
             />
           </div>
         </div>

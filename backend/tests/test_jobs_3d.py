@@ -18,6 +18,7 @@ def test_create_3d_job_success(client: TestClient, image_id: str) -> None:
     assert data["job_id"]
     assert data["status"] == "queued"
     assert data["status_url"] == f"/api/3d/jobs/{data['job_id']}"
+    assert data["asset_id"] is None
 
 
 def test_create_3d_job_keeps_background_task_reference(
@@ -75,6 +76,7 @@ def test_job_status_schema_for_all_states(client: TestClient, tmp_path) -> None:
                 message=f"job is {status.value}",
                 prompt_id="prompt-123" if status != JobStatus.queued else None,
                 model_path=model_path if status == JobStatus.succeeded else None,
+                asset_id="asset-xyz" if status == JobStatus.succeeded else None,
             )
             response = client.get(f"/api/3d/jobs/{job.job_id}")
             assert response.status_code == 200
@@ -82,8 +84,10 @@ def test_job_status_schema_for_all_states(client: TestClient, tmp_path) -> None:
             assert data["status"] == status.value
             if status == JobStatus.succeeded:
                 assert data["result"]["model_url"] == f"/api/3d/jobs/{job.job_id}/model"
+                assert data["asset_id"] == "asset-xyz"
             else:
                 assert data["result"] is None
+                assert data["asset_id"] is None
 
     asyncio.run(prepare())
 
@@ -376,6 +380,12 @@ def test_run_3d_job_succeeds(client: TestClient, image_id: str) -> None:
     assert models[0].model_variant == "single"
     assert models[0].related_job_id == job.job_id
     assert not client.app.state.asset_usage_guard.is_in_use(image_id)
+    # asset_id on the Job/JobResponse must be the *real* asset_id register_model_file()
+    # assigned in the catalog, not some placeholder -- this is what Phase 4's
+    # calibration feature will use as its key.
+    assert job.asset_id == models[0].asset_id
+    response = client.get(f"/api/3d/jobs/{job.job_id}")
+    assert response.json()["asset_id"] == models[0].asset_id
 
 
 def test_queued_single_job_does_not_register_model_asset(client: TestClient, image_id: str) -> None:

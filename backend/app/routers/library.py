@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import FileResponse
 
 from ..errors import ApiError
 from ..schemas import (
+    CalibrateAssetRequest,
     DeleteLibraryAssetResponse,
     LibraryAssetListResponse,
     LibraryAssetResponse,
@@ -20,6 +21,7 @@ from ..services.library import (
     restore_asset,
     trash_asset,
 )
+from ..services.model_calibration import calibrate_asset, export_calibrated_stl
 
 router = APIRouter()
 
@@ -55,7 +57,7 @@ async def list_library_assets(
         page_size=page_size,
     )
     return LibraryAssetListResponse(
-        items=[asset_response(asset) for asset in items],
+        items=[asset_response(catalog, asset) for asset in items],
         page=page,
         page_size=page_size,
         total=total,
@@ -64,7 +66,8 @@ async def list_library_assets(
 
 @router.get("/api/library/assets/{asset_id}", response_model=LibraryAssetResponse)
 async def get_library_asset(request: Request, asset_id: str) -> LibraryAssetResponse:
-    return asset_response(require_asset(request.app.state.asset_catalog, asset_id))
+    catalog = request.app.state.asset_catalog
+    return asset_response(catalog, require_asset(catalog, asset_id))
 
 
 @router.get("/api/library/assets/{asset_id}/content")
@@ -95,6 +98,16 @@ async def get_library_asset_usdz(request: Request, asset_id: str) -> FileRespons
     )
 
 
+@router.get("/api/library/assets/{asset_id}/stl")
+async def get_library_asset_stl(request: Request, asset_id: str) -> FileResponse:
+    # asset_id here is the *raw* asset, same as calibrated_asset_ids being
+    # exposed on the raw asset's LibraryAssetResponse -- export_calibrated_stl()
+    # resolves the currently-active calibrated child internally and blocks
+    # with asset_not_calibrated if there isn't one.
+    stl_path = export_calibrated_stl(request.app.state.asset_catalog, asset_id)
+    return FileResponse(stl_path, media_type="model/stl", filename=f"{asset_id}-calibrated.stl")
+
+
 @router.post("/api/library/assets/{asset_id}/trash", response_model=LibraryAssetResponse)
 async def trash_library_asset(request: Request, asset_id: str) -> LibraryAssetResponse:
     return trash_asset(request.app.state.asset_catalog, asset_id)
@@ -103,6 +116,24 @@ async def trash_library_asset(request: Request, asset_id: str) -> LibraryAssetRe
 @router.post("/api/library/assets/{asset_id}/restore", response_model=LibraryAssetResponse)
 async def restore_library_asset(request: Request, asset_id: str) -> LibraryAssetResponse:
     return restore_asset(request.app.state.asset_catalog, asset_id)
+
+
+@router.post(
+    "/api/library/assets/{asset_id}/calibrate",
+    response_model=LibraryAssetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def calibrate_library_asset(
+    request: Request, asset_id: str, payload: CalibrateAssetRequest
+) -> LibraryAssetResponse:
+    catalog = request.app.state.asset_catalog
+    calibrated = calibrate_asset(
+        catalog,
+        request.app.state.storage,
+        asset_id,
+        payload.target_max_dimension_cm,
+    )
+    return asset_response(catalog, calibrated)
 
 
 @router.delete("/api/library/assets/{asset_id}", response_model=DeleteLibraryAssetResponse)

@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -17,6 +18,62 @@ def test_asset_catalog_initializes_db_and_schema(tmp_path: Path) -> None:
 
     assert (tmp_path / "storage" / "assets.db").exists()
     assert catalog.list_assets() == []
+
+
+def test_asset_catalog_migrates_legacy_user_version_one_schema(tmp_path: Path) -> None:
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    db_path = storage_root / "assets.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE assets (
+                asset_id TEXT PRIMARY KEY,
+                asset_type TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                relative_path TEXT NOT NULL UNIQUE,
+                media_type TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                deleted_at TEXT,
+                size_bytes INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                parent_image_id TEXT,
+                pipeline TEXT,
+                model_variant TEXT,
+                related_job_id TEXT,
+                reference_image_id TEXT,
+                view_name TEXT,
+                original_filename TEXT
+            );
+            CREATE INDEX idx_assets_type_deleted
+                ON assets(asset_type, deleted_at);
+            CREATE INDEX idx_assets_parent_image_id
+                ON assets(parent_image_id);
+            CREATE INDEX idx_assets_reference_image_id
+                ON assets(reference_image_id);
+            CREATE INDEX idx_assets_related_job_id
+                ON assets(related_job_id);
+            PRAGMA user_version = 1;
+            """
+        )
+
+    AssetCatalog(storage_root)
+
+    with sqlite3.connect(db_path) as connection:
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(assets)").fetchall()
+        }
+        indexes = {
+            row[1]
+            for row in connection.execute("PRAGMA index_list(assets)").fetchall()
+        }
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+
+    assert "parent_asset_id" in columns
+    assert "idx_assets_parent_asset_id" in indexes
+    assert version == 2
 
 
 def test_empty_storage_reconciliation(tmp_path: Path) -> None:
@@ -204,6 +261,42 @@ def test_trash_child_is_still_returned_by_dependency_query(tmp_path: Path) -> No
     children = catalog.find_children(parent_id)
 
     assert [child.asset_id for child in children] == [child_id]
+
+
+def test_find_derived_assets_returns_calibrated_children_and_filters_unrelated(tmp_path: Path) -> None:
+    catalog, _, _ = _catalog_with_dirs(tmp_path)
+    raw_id = str(uuid.uuid4())
+    calibrated_id = str(uuid.uuid4())
+    unrelated_id = str(uuid.uuid4())
+    catalog.upsert_asset(
+        _asset_record(
+            asset_id=raw_id,
+            asset_type="model",
+            relative_path="models/raw.glb",
+            filename="raw.glb",
+        )
+    )
+    catalog.upsert_asset(
+        _asset_record(
+            asset_id=calibrated_id,
+            asset_type="model",
+            relative_path="models/calibrated.glb",
+            filename="calibrated.glb",
+            parent_asset_id=raw_id,
+        )
+    )
+    catalog.upsert_asset(
+        _asset_record(
+            asset_id=unrelated_id,
+            asset_type="model",
+            relative_path="models/unrelated.glb",
+            filename="unrelated.glb",
+        )
+    )
+
+    derived = catalog.find_derived_assets(raw_id)
+
+    assert [asset.asset_id for asset in derived] == [calibrated_id]
 
 
 def test_asset_storage_recovers_image_after_backend_restart(settings) -> None:
