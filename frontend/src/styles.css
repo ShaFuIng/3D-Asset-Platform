@@ -1571,6 +1571,20 @@ code {
   align-content: start;
 }
 
+.multiview-provider-choice {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--gui-text-1);
+}
+
+.multiview-provider-choice label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
 .view-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

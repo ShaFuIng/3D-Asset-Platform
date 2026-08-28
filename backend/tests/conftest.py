@@ -51,6 +51,13 @@ class FakeOpenAIClient:
             f"{view}: {instruction}",
         )
 
+    async def generate_multiview_view(self, source_bytes, source_media_type, view):
+        return await self.edit_image(
+            source_bytes,
+            source_media_type,
+            f"generate {view}",
+        )
+
 
 class FakeComfyClient:
     def __init__(self, *, available: bool = True, timeout: bool = False, workflow_error=None) -> None:

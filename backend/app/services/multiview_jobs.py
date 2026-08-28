@@ -473,6 +473,41 @@ async def run_multiview_image_job(
             usage_lease.release()
 
 
+async def run_multiview_image_job_openai(
+    job_id: str,
+    reference: ImageRecord,
+    store: MultiviewJobStore,
+    openai_client,
+    asset_storage,
+    usage_lease=None,
+) -> None:
+    try:
+        await store.update_images_running(job_id)
+        source_bytes = reference.path.read_bytes()
+        images = {}
+        for view in VIEW_ORDER:
+            image_bytes, _image_prompt, _response_id = await openai_client.generate_multiview_view(
+                source_bytes,
+                reference.media_type,
+                view,
+            )
+            images[view] = asset_storage.save_image_bytes(
+                image_bytes,
+                f"openai-{view}",
+                ".png",
+                source="multiview",
+                related_job_id=job_id,
+                reference_image_id=reference.image_id,
+                view_name=view,
+            )
+        await store.set_images_succeeded(job_id, images)
+    except (ApiError, OSError, Exception) as exc:
+        await store.set_failed(job_id, _safe_failure_message(exc))
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
+
+
 async def run_multiview_model_job(
     job_id: str,
     store: MultiviewJobStore,
@@ -579,6 +614,40 @@ async def run_multiview_view_regeneration_job(
         )
         await store.set_view_regeneration_candidate(job_id, view, attempt_id, image)
     except (ApiError, ComfyClientError, Exception) as exc:
+        await store.set_view_regeneration_failed(job_id, view, attempt_id, _safe_failure_message(exc))
+    finally:
+        if usage_lease is not None:
+            usage_lease.release()
+
+
+async def run_multiview_view_regeneration_job_openai(
+    job_id: str,
+    view: str,
+    attempt_id: str,
+    reference: ImageRecord,
+    store: MultiviewJobStore,
+    openai_client,
+    asset_storage,
+    usage_lease=None,
+) -> None:
+    try:
+        await store.mark_view_regeneration_running(job_id, view, attempt_id)
+        image_bytes, _image_prompt, _response_id = await openai_client.generate_multiview_view(
+            reference.path.read_bytes(),
+            reference.media_type,
+            view,
+        )
+        image = asset_storage.save_image_bytes(
+            image_bytes,
+            f"openai-{view}",
+            ".png",
+            source="multiview",
+            related_job_id=job_id,
+            reference_image_id=reference.image_id,
+            view_name=view,
+        )
+        await store.set_view_regeneration_candidate(job_id, view, attempt_id, image)
+    except (ApiError, OSError, Exception) as exc:
         await store.set_view_regeneration_failed(job_id, view, attempt_id, _safe_failure_message(exc))
     finally:
         if usage_lease is not None:

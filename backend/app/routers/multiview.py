@@ -22,9 +22,11 @@ from ..schemas import (
 from ..services.multiview_jobs import (
     MultiviewJob,
     run_multiview_image_job,
+    run_multiview_image_job_openai,
     run_multiview_model_job,
     run_multiview_view_openai_edit_job,
     run_multiview_view_regeneration_job,
+    run_multiview_view_regeneration_job_openai,
 )
 from ..services.multiview_workflows import VIEW_ORDER
 
@@ -40,8 +42,9 @@ async def create_multiview_job(
     request: Request, payload: CreateMultiviewJobRequest
 ) -> CreateMultiviewJobResponse:
     reference = request.app.state.storage.get_image_by_id(payload.reference_image_id)
-    await request.app.state.comfy_client.ensure_available()
-    request.app.state.qwen_multiview_workflow.prepare_three_view_workflow("preflight.png")
+    if payload.provider == "local":
+        await request.app.state.comfy_client.ensure_available()
+        request.app.state.qwen_multiview_workflow.prepare_three_view_workflow("preflight.png")
     job = await request.app.state.multiview_job_store.create(reference, payload.provider)
     if not getattr(request.app.state, "disable_background_jobs", False):
         usage_lease = request.app.state.asset_usage_guard.acquire(
@@ -50,17 +53,29 @@ async def create_multiview_job(
             reason="multiview_reference_image",
         )
         try:
-            task = asyncio.create_task(
-                run_multiview_image_job(
-                    job.job_id,
-                    reference,
-                    request.app.state.multiview_job_store,
-                    request.app.state.comfy_client,
-                    request.app.state.qwen_multiview_workflow,
-                    request.app.state.storage,
-                    usage_lease,
+            if payload.provider == "local":
+                task = asyncio.create_task(
+                    run_multiview_image_job(
+                        job.job_id,
+                        reference,
+                        request.app.state.multiview_job_store,
+                        request.app.state.comfy_client,
+                        request.app.state.qwen_multiview_workflow,
+                        request.app.state.storage,
+                        usage_lease,
+                    )
                 )
-            )
+            else:
+                task = asyncio.create_task(
+                    run_multiview_image_job_openai(
+                        job.job_id,
+                        reference,
+                        request.app.state.multiview_job_store,
+                        request.app.state.openai_client,
+                        request.app.state.storage,
+                        usage_lease,
+                    )
+                )
             request.app.state.background_tasks.add(task)
             task.add_done_callback(request.app.state.background_tasks.discard)
         except Exception:
@@ -138,6 +153,12 @@ async def regenerate_multiview_view(
         request.app.state.qwen_multiview_workflow.prepare_single_view_workflow("preflight.png", view)
         source = request.app.state.storage.get_image_by_id(job.reference_image.image_id)
         usage_reason = "multiview_regenerate_reference_image"
+    elif payload.strategy == RegenerateStrategy.openai_reroll:
+        # Blind regenerate from the reference image, mirroring local_reroll's
+        # source choice rather than openai_edit's (which builds on the
+        # current view image plus a user instruction).
+        source = request.app.state.storage.get_image_by_id(job.reference_image.image_id)
+        usage_reason = "multiview_regenerate_reference_image"
     else:
         source = request.app.state.storage.get_image_by_id(slot.current_image.image_id)
         usage_reason = "multiview_regenerate_current_image"
@@ -165,6 +186,19 @@ async def regenerate_multiview_view(
                         request.app.state.multiview_job_store,
                         request.app.state.comfy_client,
                         request.app.state.qwen_multiview_workflow,
+                        request.app.state.storage,
+                        usage_lease,
+                    )
+                )
+            elif payload.strategy == RegenerateStrategy.openai_reroll:
+                task = asyncio.create_task(
+                    run_multiview_view_regeneration_job_openai(
+                        job_id,
+                        view,
+                        attempt_id,
+                        source,
+                        request.app.state.multiview_job_store,
+                        request.app.state.openai_client,
                         request.app.state.storage,
                         usage_lease,
                     )

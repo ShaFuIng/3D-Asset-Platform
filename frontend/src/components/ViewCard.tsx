@@ -45,6 +45,7 @@ type ViewCardProps = {
   openAIUnavailableReason?: string;
   onAccept: (view: MultiviewName) => void;
   onLocalReroll: (view: MultiviewName) => void;
+  onOpenAIReroll: (view: MultiviewName) => void;
   onOpenAIEdit: (view: MultiviewName) => void;
   onEditDraftChange: (view: MultiviewName, value: string) => void;
   onZoom: (view: MultiviewName) => void;
@@ -62,6 +63,7 @@ export function ViewCard({
   openAIUnavailableReason,
   onAccept,
   onLocalReroll,
+  onOpenAIReroll,
   onOpenAIEdit,
   onEditDraftChange,
   onZoom,
@@ -74,6 +76,7 @@ export function ViewCard({
   const isBusy = Boolean(pendingAction || slotPending);
   const canAccept = Boolean(slot && !isBusy && image && !(slot.accepted && !slot.candidateImage));
   const canLocalReroll = Boolean(slot && hasCurrentImage && !isBusy && isComfyAvailable);
+  const canOpenAIReroll = Boolean(slot && hasCurrentImage && !isBusy && isOpenAIAvailable);
   const canOpenAIEdit = Boolean(
     slot && hasCurrentImage && !isBusy && isOpenAIAvailable && editDraft.trim(),
   );
@@ -133,6 +136,16 @@ export function ViewCard({
           <p className="hint">使用固定視角提示詞與新 Seed，不消耗 OpenAI 額度。</p>
           {!isComfyAvailable && comfyUnavailableReason && (
             <p className="hint warning">{comfyUnavailableReason}</p>
+          )}
+        </div>
+
+        <div className="view-regenerate-group">
+          <button type="button" disabled={!canOpenAIReroll} onClick={() => onOpenAIReroll(view)}>
+            {pendingAction === 'openai_reroll' ? '重新抽選中...' : '重新抽選（OpenAI）'}
+          </button>
+          <p className="hint">使用 OpenAI 從參考圖重新生成此視角，不需輸入指示文字。</p>
+          {!isOpenAIAvailable && openAIUnavailableReason && (
+            <p className="hint warning">{openAIUnavailableReason}</p>
           )}
         </div>
 

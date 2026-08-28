@@ -67,12 +67,13 @@ class Create3DJobRequest(BaseModel):
 
 class CreateMultiviewJobRequest(BaseModel):
     reference_image_id: str = Field(min_length=1)
-    provider: Literal["local"] = "local"
+    provider: Literal["local", "openai"] = "local"
 
 
 class RegenerateStrategy(str, Enum):
     local_reroll = "local_reroll"
     openai_edit = "openai_edit"
+    openai_reroll = "openai_reroll"
 
 
 class RegenerateMultiviewViewRequest(BaseModel):
@@ -81,8 +82,11 @@ class RegenerateMultiviewViewRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_strategy_payload(self) -> "RegenerateMultiviewViewRequest":
-        if self.strategy == RegenerateStrategy.local_reroll and self.instruction is not None:
-            raise ValueError("instruction is not allowed for local_reroll")
+        if (
+            self.strategy in (RegenerateStrategy.local_reroll, RegenerateStrategy.openai_reroll)
+            and self.instruction is not None
+        ):
+            raise ValueError(f"instruction is not allowed for {self.strategy.value}")
         if self.strategy == RegenerateStrategy.openai_edit:
             instruction = (self.instruction or "").strip()
             if not instruction:
@@ -128,7 +132,7 @@ class SetMultiviewCandidateRequest(BaseModel):
 
 class MultiviewViewVersionResponse(BaseModel):
     image: MultiviewImageRef
-    strategy: Literal["initial", "local_reroll", "openai_edit"]
+    strategy: Literal["initial", "local_reroll", "openai_edit", "openai_reroll"]
     created_at: str
     is_current: bool
     is_candidate: bool
@@ -142,14 +146,14 @@ class MultiviewSlotResponse(BaseModel):
     candidate_image: MultiviewImageRef | None
     accepted: bool
     error: str | None
-    provider: Literal["local"]
+    provider: Literal["local", "openai"]
     versions: list[MultiviewViewVersionResponse] = Field(default_factory=list)
 
 
 class CreateMultiviewJobResponse(BaseModel):
     job_id: str
     status: JobStatus
-    provider: Literal["local"]
+    provider: Literal["local", "openai"]
     status_url: str
 
 
@@ -157,7 +161,7 @@ class MultiviewJobResponse(BaseModel):
     job_id: str
     status: JobStatus
     message: str
-    provider: Literal["local"]
+    provider: Literal["local", "openai"]
     prompt_id: str | None
     reference_image: MultiviewImageRef
     views: dict[str, MultiviewSlotResponse]

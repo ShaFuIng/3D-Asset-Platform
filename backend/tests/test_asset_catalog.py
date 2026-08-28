@@ -70,6 +70,9 @@ def test_reconcile_scans_legacy_glb(tmp_path: Path) -> None:
         "qwen-front-{image_id}.png",
         "qwen-left-{image_id}.png",
         "qwen-back-{image_id}.png",
+        "openai-front-{image_id}.png",
+        "openai-left-{image_id}.png",
+        "openai-back-{image_id}.png",
     ],
 )
 def test_known_image_filenames_reuse_uuid(tmp_path: Path, filename: str) -> None:

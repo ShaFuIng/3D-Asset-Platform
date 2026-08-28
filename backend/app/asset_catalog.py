@@ -16,7 +16,17 @@ IMAGE_MEDIA_TYPES = {
 MODEL_MEDIA_TYPES = {
     ".glb": "model/gltf-binary",
 }
-KNOWN_IMAGE_PREFIXES = ("upload", "gpt", "edit", "qwen-front", "qwen-left", "qwen-back")
+KNOWN_IMAGE_PREFIXES = (
+    "upload",
+    "gpt",
+    "edit",
+    "qwen-front",
+    "qwen-left",
+    "qwen-back",
+    "openai-front",
+    "openai-left",
+    "openai-back",
+)
 ASSET_SORTS = {
     "created_at_desc": "created_at DESC, asset_id DESC",
     "created_at_asc": "created_at ASC, asset_id ASC",

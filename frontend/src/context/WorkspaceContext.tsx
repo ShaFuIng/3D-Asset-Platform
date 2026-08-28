@@ -23,6 +23,7 @@ import type {
   MultiviewJobResponse,
   MultiviewModelJobResponse,
   MultiviewName,
+  MultiviewProvider,
   RegenerateMultiviewViewRequest,
   RegenerateStrategy,
 } from '../types/api';
@@ -173,7 +174,7 @@ export type WorkspaceContextValue = {
 
   // Multiview pipeline: one isolated workspace per image.
   multiviewByImageId: Record<string, MultiviewWorkspace>;
-  startMultiview: (imageId: string) => Promise<void>;
+  startMultiview: (imageId: string, provider?: MultiviewProvider) => Promise<void>;
   acceptView: (imageId: string, view: MultiviewName) => Promise<void>;
   setViewCandidate: (
     imageId: string,
@@ -748,7 +749,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function startMultiview(imageId: string) {
+  async function startMultiview(imageId: string, provider: MultiviewProvider = 'local') {
     const lock = multiviewStartLockRef.current;
     if (lock.has(imageId)) {
       return;
@@ -771,7 +772,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }));
 
     try {
-      const created = await createMultiviewJob(imageId);
+      const created = await createMultiviewJob(imageId, provider);
       const nextJob = await getMultiviewJob(created.jobId);
       // Start-attempt guard: the entry was reset to job: null before the
       // POST, so a jobId-equality check can never match here. The start lock
@@ -875,9 +876,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return;
     }
     const payload: RegenerateMultiviewViewRequest =
-      strategy === 'local_reroll'
-        ? { strategy: 'local_reroll' }
-        : { strategy: 'openai_edit', instruction: content };
+      strategy === 'openai_edit'
+        ? { strategy: 'openai_edit', instruction: content }
+        : { strategy };
     lock.add(lockKey);
     setViewActionPending(imageId, view, strategy);
 

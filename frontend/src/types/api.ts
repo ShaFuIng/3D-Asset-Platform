@@ -90,13 +90,14 @@ export type JobResponse = {
 
 export type MultiviewName = 'front' | 'left' | 'back';
 
-export type MultiviewProvider = 'local';
+export type MultiviewProvider = 'local' | 'openai';
 
-export type RegenerateStrategy = 'local_reroll' | 'openai_edit';
+export type RegenerateStrategy = 'local_reroll' | 'openai_edit' | 'openai_reroll';
 
 export type RegenerateMultiviewViewRequest =
   | { strategy: 'local_reroll' }
-  | { strategy: 'openai_edit'; instruction: string };
+  | { strategy: 'openai_edit'; instruction: string }
+  | { strategy: 'openai_reroll' };
 
 export type MultiviewImageRef = {
   imageId: string;
@@ -104,7 +105,7 @@ export type MultiviewImageRef = {
   filename: string;
 };
 
-export type MultiviewVersionStrategy = 'initial' | 'local_reroll' | 'openai_edit';
+export type MultiviewVersionStrategy = 'initial' | 'local_reroll' | 'openai_edit' | 'openai_reroll';
 
 export type MultiviewVersionState = 'active' | 'trash' | 'missing';
 

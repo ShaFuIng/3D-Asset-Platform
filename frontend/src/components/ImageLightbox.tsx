@@ -245,5 +245,8 @@ function getStrategyLabel(strategy: MultiviewViewVersion['strategy']): string {
   if (strategy === 'local_reroll') {
     return 'Local Reroll';
   }
+  if (strategy === 'openai_reroll') {
+    return 'OpenAI Reroll';
+  }
   return 'GPT Edit';
 }

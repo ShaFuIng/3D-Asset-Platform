@@ -8,12 +8,14 @@ from app.errors import ApiError
 from app.schemas import JobStatus
 from app.services.multiview_jobs import (
     run_multiview_image_job,
+    run_multiview_image_job_openai,
     run_multiview_model_job,
     run_multiview_view_openai_edit_job,
     run_multiview_view_regeneration_job,
+    run_multiview_view_regeneration_job_openai,
 )
 from app.services.multiview_workflows import HunyuanMultiviewWorkflow, QwenMultiviewWorkflow
-from tests.conftest import FakeBlenderClient, FakeOpenAIClient, GLB_BYTES, PNG_BYTES
+from tests.conftest import FakeBlenderClient, FakeComfyClient, FakeOpenAIClient, GLB_BYTES, PNG_BYTES
 
 
 def qwen_template() -> dict:
@@ -179,6 +181,26 @@ def test_create_multiview_job_and_reject_invalid_view(client: TestClient, image_
 
     assert invalid.status_code == 400
     assert invalid.json()["error"]["code"] == "invalid_view"
+
+
+def test_create_multiview_job_openai_provider_skips_comfy_preflight(
+    client: TestClient, image_id: str
+) -> None:
+    # No prepare_multiview_app(): the Qwen/Hunyuan workflow templates are
+    # never written to disk, and ComfyUI is reported unavailable. The
+    # "openai" provider must still succeed, proving the endpoint never
+    # touches comfy_client.ensure_available() or the Qwen workflow adapter
+    # for this provider.
+    client.app.state.comfy_client = FakeComfyClient(available=False)
+
+    response = client.post(
+        "/api/multiview/jobs",
+        json={"reference_image_id": image_id, "provider": "openai"},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["provider"] == "openai"
 
 
 def test_model_job_requires_all_views_accepted(client: TestClient, image_id: str) -> None:
@@ -466,6 +488,43 @@ def test_run_multiview_image_job_saves_distinct_assets(client: TestClient, image
         assert slot.versions[0].strategy == "initial"
 
 
+def test_run_multiview_image_job_openai_saves_distinct_assets_without_comfy(
+    client: TestClient, image_id: str
+) -> None:
+    # No prepare_multiview_app(): the Qwen/Hunyuan workflow templates are
+    # never written, and the FakeComfyClient passed in is unusable (no
+    # settings). This is the OpenAI counterpart of
+    # test_run_multiview_image_job_saves_distinct_assets, proving the whole
+    # image job runs end to end without a single ComfyUI/Qwen call.
+    async def run():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "openai")
+        await run_multiview_image_job_openai(
+            job.job_id,
+            reference,
+            client.app.state.multiview_job_store,
+            client.app.state.openai_client,
+            client.app.state.storage,
+        )
+        return await client.app.state.multiview_job_store.get(job.job_id)
+
+    job = asyncio.run(run())
+
+    assert job.status == JobStatus.succeeded
+    assert {slot.current_image.image_id for slot in job.views.values()} != {image_id}
+    assert len({slot.current_image.image_id for slot in job.views.values()}) == 3
+    for view, slot in job.views.items():
+        asset = client.app.state.asset_catalog.get_asset(slot.current_image.image_id)
+        assert asset.filename.startswith(f"openai-{view}-")
+        assert asset.source == "multiview"
+        assert asset.view_name == view
+        assert asset.related_job_id == job.job_id
+        assert asset.reference_image_id == image_id
+        assert len(slot.versions) == 1
+        assert slot.versions[0].image.image_id == slot.current_image.image_id
+        assert slot.versions[0].strategy == "initial"
+
+
 def test_run_multiview_model_job_saves_two_models(client: TestClient, image_id: str) -> None:
     prepare_multiview_app(client)
 
@@ -659,6 +718,50 @@ def test_regenerate_openai_edit_accepts_chinese_instruction(client: TestClient, 
     assert response.status_code == 202
 
 
+def test_regenerate_openai_reroll_endpoint_queues_one_view_without_comfy(
+    client: TestClient, image_id: str
+) -> None:
+    # No prepare_multiview_app() and an unavailable ComfyClient: openai_reroll
+    # must not touch comfy_client or the Qwen workflow adapter.
+    client.app.state.comfy_client = FakeComfyClient(available=False)
+
+    async def prepare():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "openai")
+        records = {
+            view: client.app.state.storage.save_image_bytes(PNG_BYTES, view, ".png")
+            for view in ("front", "left", "back")
+        }
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        return job.job_id
+
+    job_id = asyncio.run(prepare())
+    response = client.post(
+        f"/api/multiview/jobs/{job_id}/views/left/regenerate",
+        json={"strategy": "openai_reroll"},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["views"]["left"]["status"] == "queued"
+    assert data["views"]["left"]["candidate_image"] is None
+    assert data["views"]["front"]["status"] == "succeeded"
+
+
+def test_regenerate_openai_reroll_rejects_instruction(client: TestClient, image_id: str) -> None:
+    created = client.post(
+        "/api/multiview/jobs", json={"reference_image_id": image_id, "provider": "openai"}
+    ).json()
+
+    response = client.post(
+        f"/api/multiview/jobs/{created['job_id']}/views/front/regenerate",
+        json={"strategy": "openai_reroll", "instruction": "change the sleeve"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+
+
 def test_start_view_regeneration_rejects_duplicate_same_view(client: TestClient, image_id: str) -> None:
     async def prepare():
         reference = client.app.state.storage.get_image_by_id(image_id)
@@ -767,6 +870,60 @@ def test_run_view_regeneration_uses_reference_and_sets_candidate(client: TestCli
     assert asset.view_name == "left"
     assert comfy.workflows[0]["113"]["inputs"]["text"].startswith("<sks> left side view")
     assert comfy.workflows[0]["112:105"]["inputs"]["seed"] != 1
+
+
+def test_run_view_regeneration_openai_uses_reference_and_sets_candidate(
+    client: TestClient, image_id: str
+) -> None:
+    # OpenAI counterpart of test_run_view_regeneration_uses_reference_and_sets_candidate:
+    # same reference-image source and candidate bookkeeping, but through
+    # openai_client.generate_multiview_view instead of Qwen/ComfyUI.
+    async def run():
+        reference = client.app.state.storage.get_image_by_id(image_id)
+        job = await client.app.state.multiview_job_store.create(reference, "openai")
+        records = {
+            view: client.app.state.storage.save_image_bytes(PNG_BYTES, view, ".png")
+            for view in ("front", "left", "back")
+        }
+        await client.app.state.multiview_job_store.set_images_succeeded(job.job_id, records)
+        await client.app.state.multiview_job_store.start_view_regeneration(
+            job.job_id,
+            "left",
+            "attempt-1",
+            "openai_reroll",
+        )
+        usage_lease = client.app.state.asset_usage_guard.acquire(
+            reference.image_id,
+            owner="test-regenerate-openai",
+            reason="multiview_regenerate_reference_image",
+        )
+        assert client.app.state.asset_usage_guard.is_in_use(reference.image_id)
+
+        await run_multiview_view_regeneration_job_openai(
+            job.job_id,
+            "left",
+            "attempt-1",
+            reference,
+            client.app.state.multiview_job_store,
+            client.app.state.openai_client,
+            client.app.state.storage,
+            usage_lease,
+        )
+        return await client.app.state.multiview_job_store.get(job.job_id), reference
+
+    job, reference = asyncio.run(run())
+    slot = job.views["left"]
+    assert slot.current_image is not None
+    assert slot.candidate_image is not None
+    assert slot.candidate_image.image_id != slot.current_image.image_id
+    assert not client.app.state.asset_usage_guard.is_in_use(reference.image_id)
+    asset = client.app.state.asset_catalog.get_asset(slot.candidate_image.image_id)
+    assert asset.filename.startswith("openai-left-")
+    assert asset.source == "multiview"
+    assert asset.related_job_id == job.job_id
+    assert asset.reference_image_id == image_id
+    assert asset.view_name == "left"
+    assert slot.versions[-1].strategy == "openai_reroll"
 
 
 def test_view_regeneration_failure_preserves_current_and_candidate(client: TestClient, image_id: str) -> None:

@@ -9,6 +9,7 @@ from ..config import Settings
 from ..errors import ApiError
 from ..schemas import ChatMessage
 from .multiview_edit_prompts import build_multiview_edit_prompt
+from .multiview_openai_prompts import OPENAI_VIEW_PROMPTS
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,18 @@ class OpenAIImageClient:
             source_bytes,
             source_media_type,
             build_multiview_edit_prompt(view, instruction),
+        )
+
+    async def generate_multiview_view(
+        self,
+        source_bytes: bytes,
+        source_media_type: str,
+        view: str,
+    ) -> tuple[bytes, str | None, str]:
+        return await self.edit_image(
+            source_bytes,
+            source_media_type,
+            OPENAI_VIEW_PROMPTS[view],
         )
 
     def _parse_image_response(self, response: Any) -> tuple[bytes, str | None, str]:

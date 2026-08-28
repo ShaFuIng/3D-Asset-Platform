@@ -15,6 +15,7 @@ import type {
   MultiviewJobResponse,
   MultiviewModelJobResponse,
   MultiviewName,
+  MultiviewProvider,
   OpenAIHealthResponse,
   RegenerateMultiviewViewRequest,
   UploadImageResponse,
@@ -124,12 +125,13 @@ export async function get3DJob(jobId: string, signal?: AbortSignal): Promise<Job
 
 export async function createMultiviewJob(
   referenceImageId: string,
+  provider: MultiviewProvider = 'local',
   signal?: AbortSignal,
 ): Promise<CreateMultiviewJobResponse> {
   const data = await requestJson<CreateMultiviewJobResponseBody>('/api/multiview/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reference_image_id: referenceImageId, provider: 'local' }),
+    body: JSON.stringify({ reference_image_id: referenceImageId, provider }),
     signal,
   });
   return toCreateMultiviewJob(data);
@@ -303,13 +305,13 @@ type MultiviewSlotBody = {
   candidate_image: MultiviewImageRefBody | null;
   accepted: boolean;
   error: string | null;
-  provider: 'local';
+  provider: MultiviewProvider;
   versions: MultiviewViewVersionBody[];
 };
 
 type MultiviewViewVersionBody = {
   image: MultiviewImageRefBody;
-  strategy: 'initial' | 'local_reroll' | 'openai_edit';
+  strategy: 'initial' | 'local_reroll' | 'openai_edit' | 'openai_reroll';
   created_at: string;
   is_current: boolean;
   is_candidate: boolean;
@@ -320,7 +322,7 @@ type MultiviewViewVersionBody = {
 type CreateMultiviewJobResponseBody = {
   job_id: string;
   status: JobResponse['status'];
-  provider: 'local';
+  provider: MultiviewProvider;
   status_url: string;
 };
 
@@ -328,7 +330,7 @@ type MultiviewJobResponseBody = {
   job_id: string;
   status: JobResponse['status'];
   message: string;
-  provider: 'local';
+  provider: MultiviewProvider;
   prompt_id: string | null;
   reference_image: MultiviewImageRefBody;
   views: Record<MultiviewName, MultiviewSlotBody>;

@@ -6,7 +6,7 @@ import { StageShell } from '../components/StageShell';
 import { TechnicalDetails } from '../components/TechnicalDetails';
 import { ViewCard } from '../components/ViewCard';
 import { useWorkspace } from '../context/WorkspaceContext';
-import type { JobStatus, MultiviewName, ServiceHealthState } from '../types/api';
+import type { JobStatus, MultiviewName, MultiviewProvider, ServiceHealthState } from '../types/api';
 
 const VIEW_ORDER: MultiviewName[] = ['front', 'left', 'back'];
 
@@ -58,6 +58,10 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
   const [zoomState, setZoomState] = useState<MultiviewZoomState>();
   // Lightbox-scoped error for the Set Candidate action only.
   const [candidateError, setCandidateError] = useState<string | null>(null);
+  // Which provider generates the initial Front/Left/Back set. Pure UI state,
+  // read once when "生成 Front / Left / Back" is clicked; switching it never
+  // touches an existing job.
+  const [initialProvider, setInitialProvider] = useState<MultiviewProvider>('local');
 
   const imageId = params.imageId ?? selectedImageId ?? '';
   const selectedImage = imageId ? images.find((image) => image.image_id === imageId) : undefined;
@@ -235,16 +239,46 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
             src={resolveApiUrl(selectedImage.url)}
             alt="Selected reference"
           />
+          <div className="multiview-provider-choice" role="radiogroup" aria-label="初始三視圖生成方式">
+            <label>
+              <input
+                type="radio"
+                name="initial-provider"
+                value="local"
+                checked={initialProvider === 'local'}
+                onChange={() => setInitialProvider('local')}
+              />
+              Qwen（本機 ComfyUI）
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="initial-provider"
+                value="openai"
+                checked={initialProvider === 'openai'}
+                onChange={() => setInitialProvider('openai')}
+              />
+              OpenAI
+            </label>
+          </div>
           <button
             type="button"
             disabled={
-              isStarting || isPending(job?.status) || isPending(modelJob?.status) || isComfyDisconnected
+              isStarting ||
+              isPending(job?.status) ||
+              isPending(modelJob?.status) ||
+              (initialProvider === 'local' ? isComfyDisconnected : !isOpenAIAvailable)
             }
-            onClick={() => void startMultiview(imageId)}
+            onClick={() => void startMultiview(imageId, initialProvider)}
           >
             {isStarting || isPending(job?.status) ? '生成三視圖中…' : '生成 Front / Left / Back'}
           </button>
-          {isComfyDisconnected && <p className="hint warning">ComfyUI 未連線，無法建立多視角工作。</p>}
+          {initialProvider === 'local' && isComfyDisconnected && (
+            <p className="hint warning">ComfyUI 未連線，無法建立多視角工作。</p>
+          )}
+          {initialProvider === 'openai' && !isOpenAIAvailable && (
+            <p className="hint warning">{openAIUnavailableReason}</p>
+          )}
           {error && <p className="hint error">{error}</p>}
           {job && (
             <TechnicalDetails
@@ -272,6 +306,7 @@ export function MultiviewStagePage({ comfy, openai }: MultiviewStagePageProps) {
               openAIUnavailableReason={openAIUnavailableReason}
               onAccept={(target) => void acceptView(imageId, target)}
               onLocalReroll={(target) => void regenerateView(imageId, target, 'local_reroll')}
+              onOpenAIReroll={(target) => void regenerateView(imageId, target, 'openai_reroll')}
               onOpenAIEdit={(target) => void regenerateView(imageId, target, 'openai_edit', getDraft(target))}
               onEditDraftChange={(target, value) => {
                 if (job) {
