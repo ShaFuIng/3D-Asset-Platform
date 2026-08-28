@@ -1,7 +1,7 @@
 {
   "10": {
     "inputs": {
-      "model": "hunyun\\tencentHunyuan3D-2mv.safetensors",
+      "model": "hunyuan3d-2mv-fp16.safetensors",
       "attention_mode": "sdpa",
       "cublas_ops": false
     },
