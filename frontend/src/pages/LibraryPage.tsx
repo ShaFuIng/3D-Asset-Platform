@@ -14,13 +14,12 @@ import { ModelViewer } from '../components/ModelViewer';
 import { TechnicalDetails } from '../components/TechnicalDetails';
 import { useWorkspace } from '../context/WorkspaceContext';
 import type {
-  ImageAsset,
-  ImageSource,
   LibraryAsset,
   LibraryAssetQuery,
   LibraryAssetSort,
   LibraryAssetType,
 } from '../types/api';
+import { libraryAssetToImageAsset } from '../utils/libraryAsset';
 
 type LibraryTab = 'images' | 'models' | 'trash';
 
@@ -216,14 +215,7 @@ export function LibraryPage() {
   }
 
   function importAsReference(asset: LibraryAsset) {
-    const image: ImageAsset = {
-      image_id: asset.asset_id,
-      filename: asset.filename,
-      url: asset.content_url,
-      source: toWorkspaceImageSource(asset.source),
-      parentImageId: asset.parent_image_id ?? undefined,
-    };
-    importLibraryImageAsReference(image);
+    importLibraryImageAsReference(libraryAssetToImageAsset(asset));
     navigate('/reference');
   }
 
@@ -600,13 +592,6 @@ function createQuery(
     page: filters.page,
     page_size: PAGE_SIZE,
   };
-}
-
-function toWorkspaceImageSource(source: string): ImageSource {
-  if (source === 'generated' || source === 'uploaded' || source === 'edited') {
-    return source;
-  }
-  return 'uploaded';
 }
 
 function toLightboxImage(asset: LibraryAsset): LightboxImage {

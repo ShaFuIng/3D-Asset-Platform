@@ -9,6 +9,7 @@ type ChatComposerProps = {
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onUpload: (file: File) => void;
+  onOpenLibraryPicker: () => void;
 };
 
 export function ChatComposer({
@@ -20,6 +21,7 @@ export function ChatComposer({
   onPromptChange,
   onSubmit,
   onUpload,
+  onOpenLibraryPicker,
 }: ChatComposerProps) {
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -63,6 +65,9 @@ export function ChatComposer({
             }}
           />
         </label>
+        <button type="button" onClick={onOpenLibraryPicker}>
+          從資產庫選擇圖片
+        </button>
         <button type="submit" disabled={isDisabled || isGenerating || !prompt.trim()}>
           {isGenerating ? 'Generating...' : '送出'}
         </button>

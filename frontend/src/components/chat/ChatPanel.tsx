@@ -15,6 +15,7 @@ type ChatPanelProps = {
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
   onUpload: (file: File) => void;
+  onOpenLibraryPicker: () => void;
   onStartNewConversation: () => void;
 };
 
@@ -30,6 +31,7 @@ export function ChatPanel({
   onPromptChange,
   onSubmit,
   onUpload,
+  onOpenLibraryPicker,
   onStartNewConversation,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -88,6 +90,7 @@ export function ChatPanel({
         onPromptChange={onPromptChange}
         onSubmit={onSubmit}
         onUpload={onUpload}
+        onOpenLibraryPicker={onOpenLibraryPicker}
       />
     </section>
   );

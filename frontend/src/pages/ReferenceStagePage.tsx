@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resolveApiUrl } from '../api/client';
 import { ChatPanel } from '../components/chat/ChatPanel';
 import { ImageGallery } from '../components/ImageGallery';
+import { LibraryImagePicker } from '../components/LibraryImagePicker';
 import { StageShell } from '../components/StageShell';
 import { TechnicalDetails } from '../components/TechnicalDetails';
 import { useWorkspace } from '../context/WorkspaceContext';
-import type { ServiceHealthState } from '../types/api';
+import type { ImageAsset, ServiceHealthState } from '../types/api';
 
 type ReferenceStagePageProps = {
   openai: ServiceHealthState;
@@ -37,9 +39,17 @@ export function ReferenceStagePage({ openai }: ReferenceStagePageProps) {
     restoreImage,
     setEditPrompt,
     editImage,
+    importLibraryImageAsReference,
   } = useWorkspace();
+  const [isLibraryPickerOpen, setIsLibraryPickerOpen] = useState(false);
 
   const selectedImage = images.find((image) => image.image_id === selectedImageId);
+
+  function handleSelectLibraryImage(image: ImageAsset) {
+    importLibraryImageAsReference(image);
+    setIsLibraryPickerOpen(false);
+  }
+
   const isOpenAIDisabled = openai.status !== 'configured';
   const openaiDisabledReason =
     openai.status === 'checking'
@@ -92,6 +102,7 @@ export function ReferenceStagePage({ openai }: ReferenceStagePageProps) {
             }
           }}
           onUpload={(file) => void uploadImage(file)}
+          onOpenLibraryPicker={() => setIsLibraryPickerOpen(true)}
           onStartNewConversation={startNewConversation}
         />
 
@@ -121,6 +132,13 @@ export function ReferenceStagePage({ openai }: ReferenceStagePageProps) {
           )}
         </div>
       </div>
+
+      {isLibraryPickerOpen && (
+        <LibraryImagePicker
+          onSelect={handleSelectLibraryImage}
+          onClose={() => setIsLibraryPickerOpen(false)}
+        />
+      )}
     </StageShell>
   );
 }
