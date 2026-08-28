@@ -12,3 +12,5 @@
 - [2026-08-27：修復 Tailscale 存取時前端 BACKEND/OPENAI/COMFYUI 全部顯示 disconnected](./2026-08-27-frontend-api-base-url-tailnet-fix.md)
 - [2026-08-28：ComfyUI + Hunyuan3D-2mv 本地部署，打通多視角 mesh pipeline 端到端驗證](./2026-08-28-comfyui-hunyuan3d-2mv-deployment.md)
 - [2026-08-28：多視角 pipeline 加入 OpenAI 平行路徑：不裝 Qwen/ComfyUI 也能跑完整流程](./2026-08-28-multiview-openai-initial-gen.md)
+- [2026-08-28：Vite 開發伺服器 port 漂移根因：`tailscale serve` 常駐佔用 wildcard bind](./2026-08-28-vite-port-drift-tailscale-serve.md)
+- [2026-08-28：合併驗證：`multiview-openai-initial-gen` × `library-image-picker`（disposable `integration-test` 分支）](./2026-08-28-integration-test-merge-verification.md)
