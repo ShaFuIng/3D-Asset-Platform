@@ -797,6 +797,20 @@ code {
   font-weight: 700;
 }
 
+.viewer-calibration-summary {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--gui-line);
+  border-radius: var(--gui-radius);
+  background: rgba(7, 9, 12, 0.55);
+}
+
+.viewer-calibration-summary .hint {
+  margin: 0;
+}
+
 .viewer-ar-scale input {
   width: 72px;
 }

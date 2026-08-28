@@ -14,6 +14,7 @@ storage/models/*
 /storage/assets.db-shm
 /storage/assets.db-wal
 /storage/assets.db-journal
+/storage/assets.db*.bak
 
 # Local tool caches
 .vite/

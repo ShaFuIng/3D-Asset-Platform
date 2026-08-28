@@ -34,6 +34,8 @@ type ModelViewerProps = {
    * ModelViewer stays purely props-driven.
    */
   assetId?: string;
+  rawAsset?: LibraryAsset | null;
+  calibratedAsset?: LibraryAsset | null;
   /** Whether `src` is currently showing a calibrated (real-world-scale) GLB. */
   isCalibrated?: boolean;
   /** Called after a successful calibrate call, so the caller can refresh
@@ -126,7 +128,15 @@ const EMPTY_STATS: ModelStats = {
 const BOUNDING_BOX_EPSILON = 0.000001;
 const DEFAULT_AR_TARGET_VALUE = '10';
 
-export function ModelViewer({ src, usdzUrl, assetId, isCalibrated, onCalibrated }: ModelViewerProps) {
+export function ModelViewer({
+  src,
+  usdzUrl,
+  assetId,
+  rawAsset,
+  calibratedAsset,
+  isCalibrated,
+  onCalibrated,
+}: ModelViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ViewerRuntime | null>(null);
   const materialModeRef = useRef<MaterialMode>('original');
@@ -524,6 +534,13 @@ export function ModelViewer({ src, usdzUrl, assetId, isCalibrated, onCalibrated 
   }
 
   const experimentalRuntimeScale = isCalibrated ? 1 : arScale;
+  const previewKind = isCalibrated ? '校正後 GLB' : '原始 GLB';
+  const previewFilename = isCalibrated ? calibratedAsset?.filename : rawAsset?.filename;
+  const calibratedSize = isCalibrated && originalModelSize ? toCentimeterSize(originalModelSize) : null;
+  const rawDownloadUrl =
+    rawAsset?.status === 'available' ? resolveApiUrl(rawAsset.content_url) : undefined;
+  const calibratedDownloadUrl =
+    calibratedAsset?.status === 'available' ? resolveApiUrl(calibratedAsset.content_url) : undefined;
 
   if (!src) {
     return (
@@ -572,6 +589,25 @@ export function ModelViewer({ src, usdzUrl, assetId, isCalibrated, onCalibrated 
           <span className="badge" data-kind={isCalibrated ? 'succeeded' : 'unknown'}>
             {isCalibrated ? '已校正' : '尚未校正'}
           </span>
+          <div className="viewer-calibration-summary">
+            <p className="hint">目前預覽：{previewKind}</p>
+            {rawAsset && <p className="hint">原始 GLB：{rawAsset.filename}</p>}
+            {calibratedAsset && <p className="hint">校正後 GLB：{calibratedAsset.filename}</p>}
+            {previewFilename && <p className="hint">目前載入檔名：{previewFilename}</p>}
+            {isCalibrated && calibratedSize ? (
+              <p className="hint">
+                實際尺寸：W {formatCentimeters(calibratedSize.width)}／H{' '}
+                {formatCentimeters(calibratedSize.height)}／D {formatCentimeters(calibratedSize.depth)}
+                <br />
+                最大邊 {formatCentimeters(getMaxSize(calibratedSize))}
+              </p>
+            ) : (
+              <p className="hint">
+                原始 GLB 座標尺寸，不代表真實世界尺寸：W {formatMeters(originalModelSize?.width)} / H{' '}
+                {formatMeters(originalModelSize?.height)} / D {formatMeters(originalModelSize?.depth)}
+              </p>
+            )}
+          </div>
           <div className="calibration-presets" role="group" aria-label="Calibration presets">
             {CALIBRATION_PRESETS.map((preset) => (
               <button
@@ -601,6 +637,22 @@ export function ModelViewer({ src, usdzUrl, assetId, isCalibrated, onCalibrated 
             {isSaving ? '校正中...' : '儲存並校正'}
           </button>
           {calibrationError && <p className="hint error">{calibrationError}</p>}
+          <div className="model-downloads">
+            {rawDownloadUrl && (
+              <a className="download-link" href={rawDownloadUrl} download={rawAsset?.filename}>
+                下載原始 GLB
+              </a>
+            )}
+            {calibratedDownloadUrl && (
+              <a
+                className="download-link"
+                href={calibratedDownloadUrl}
+                download={calibratedAsset?.filename}
+              >
+                下載校正後 GLB
+              </a>
+            )}
+          </div>
           {isCalibrated && (
             <a
               className="download-link"
@@ -878,6 +930,25 @@ function formatMeters(value: number | undefined): string {
     return 'loading';
   }
   return `${formatNumber(value)} m`;
+}
+
+function toCentimeterSize(size: ModelSize): ModelSize {
+  return {
+    width: size.width * 100,
+    height: size.height * 100,
+    depth: size.depth * 100,
+  };
+}
+
+function getMaxSize(size: ModelSize): number {
+  return Math.max(size.width, size.height, size.depth);
+}
+
+function formatCentimeters(value: number | undefined): string {
+  if (!Number.isFinite(value)) {
+    return 'loading';
+  }
+  return `${formatNumber(value)} cm`;
 }
 
 function formatScale(value: number): string {

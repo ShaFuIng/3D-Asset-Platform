@@ -423,7 +423,15 @@ export function LibraryPage() {
             <button type="button" className="lightbox-close" onClick={() => setModelAsset(null)}>
               ×
             </button>
-            <h3>{modelAsset.filename}</h3>
+            <h3>
+              {calibration.calibratedAsset?.status === 'available'
+                ? calibration.calibratedAsset.filename
+                : modelAsset.filename}
+            </h3>
+            <p className="hint">
+              目前預覽：
+              {calibration.calibratedAsset?.status === 'available' ? '校正後 GLB' : '原始 GLB'}
+            </p>
             {calibration.error && <p className="hint error">{calibration.error}</p>}
             <ModelViewer
               src={
@@ -439,7 +447,9 @@ export function LibraryPage() {
                   : undefined
               }
               assetId={modelAsset.asset_type === 'model' ? modelAsset.asset_id : undefined}
-              isCalibrated={Boolean(calibration.calibratedAsset)}
+              rawAsset={calibration.rawAsset ?? modelAsset}
+              calibratedAsset={calibration.calibratedAsset}
+              isCalibrated={calibration.calibratedAsset?.status === 'available'}
               onCalibrated={() => void calibration.refresh()}
             />
           </div>
@@ -566,7 +576,7 @@ function ModelAssetCard({
           download={asset.filename}
           aria-disabled={!isAvailable}
         >
-          下載 GLB
+          下載原始 GLB
         </a>
         {asset.reference_image_id && (
           <button type="button" onClick={onReference}>

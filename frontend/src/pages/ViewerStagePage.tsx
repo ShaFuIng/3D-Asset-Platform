@@ -93,17 +93,28 @@ export function ViewerStagePage() {
               }
               usdzUrl={usdzUrl}
               assetId={inspectAssetId}
-              isCalibrated={Boolean(calibration.calibratedAsset)}
+              rawAsset={calibration.rawAsset}
+              calibratedAsset={calibration.calibratedAsset}
+              isCalibrated={calibration.calibratedAsset?.status === 'available'}
               onCalibrated={() => void calibration.refresh()}
             />
           </div>
           <div className="model-downloads">
-            {modelUrl ? (
-              <a className="download-link" href={modelUrl} download>
-                下載 GLB
+          {modelUrl ? (
+              <a className="download-link" href={modelUrl} download={calibration.rawAsset?.filename}>
+                下載原始生成 GLB
               </a>
             ) : (
               <span className="hint">模型尚不可用；請回到生成進度頁確認狀態。</span>
+            )}
+            {calibration.calibratedAsset?.status === 'available' && (
+              <a
+                className="download-link"
+                href={resolveApiUrl(calibration.calibratedAsset.content_url)}
+                download={calibration.calibratedAsset.filename}
+              >
+                下載校正後 GLB
+              </a>
             )}
           </div>
           <TechnicalDetails items={[['job_id', jobId], ['pipeline', 'single']]} />
@@ -182,25 +193,48 @@ export function ViewerStagePage() {
                 : activeModelUrl ?? undefined
             }
             assetId={inspectAssetId}
-            isCalibrated={Boolean(calibration.calibratedAsset)}
+            rawAsset={calibration.rawAsset}
+            calibratedAsset={calibration.calibratedAsset}
+            isCalibrated={calibration.calibratedAsset?.status === 'available'}
             onCalibrated={() => void calibration.refresh()}
           />
         </div>
 
         <div className="model-downloads">
           {geometryUrl ? (
-            <a className="download-link" href={geometryUrl} download>
-              下載 Geometry GLB
+            <a
+              className="download-link"
+              href={geometryUrl}
+              download={
+                workspace.activeModelKind === 'geometry' ? calibration.rawAsset?.filename : undefined
+              }
+            >
+              下載原始生成 Geometry GLB
             </a>
           ) : (
             <span className="hint">Geometry GLB 不可用</span>
           )}
           {texturedUrl ? (
-            <a className="download-link" href={texturedUrl} download>
-              下載 Textured GLB
+            <a
+              className="download-link"
+              href={texturedUrl}
+              download={
+                workspace.activeModelKind === 'textured' ? calibration.rawAsset?.filename : undefined
+              }
+            >
+              下載原始生成 Textured GLB
             </a>
           ) : (
             <span className="hint">Textured GLB 不可用</span>
+          )}
+          {calibration.calibratedAsset?.status === 'available' && (
+            <a
+              className="download-link"
+              href={resolveApiUrl(calibration.calibratedAsset.content_url)}
+              download={calibration.calibratedAsset.filename}
+            >
+              下載校正後 GLB
+            </a>
           )}
         </div>
 
